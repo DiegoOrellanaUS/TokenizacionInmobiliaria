@@ -92,7 +92,7 @@ Hoy los contenedores se construyen con Docker. El repositorio tiene los proyecto
 
 Diagrama con los íconos oficiales de AWS. Se genera con [img/arquitectura-aws.py](img/arquitectura-aws.py) (`uv run --with diagrams python docs/img/arquitectura-aws.py`, requiere Graphviz); hay que regenerarlo cuando cambie el diseño.
 
-![Arquitectura en AWS](img/arquitectura-aws.png)
+![Arquitectura en AWS](img/arquitectura-aws.jpeg)
 
 El mismo diseño en Mermaid, editable directamente en este documento:
 

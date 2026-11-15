@@ -18,7 +18,7 @@
 
 ## 0. Resumen
 
-El diseño actual tiene dos aplicaciones Next.js, un gateway YARP en .NET, siete servicios .NET (cinco con su propia base PostgreSQL), una cola SQS y un asistente de IA en AgentCore. Las fronteras entre servicios son razonables y la arquitectura limpia del backend (repositorios, DTO, mapeadores, validación) se conserva sin cambios.
+El diseño actual tiene dos aplicaciones Next.js, un gateway YARP en .NET, siete servicios .NET (cinco con su propia base PostgreSQL y dos, Global y Reportes, con MongoDB), una cola SQS y un asistente de IA en AgentCore. Las fronteras entre servicios son razonables y la arquitectura limpia del backend (repositorios, DTO, mapeadores, validación) se conserva sin cambios.
 
 El diseño propuesto:
 
@@ -29,13 +29,13 @@ El diseño propuesto:
 | Identidad y login | Construida dentro del servicio Admin | **Amazon Cognito**, con MFA y grupos por rol |
 | Servicios .NET | Contenedores en los puertos 8080 a 8085 | **AWS Lambda**, una función por servicio |
 | Workers | Procesos .NET de larga duración | Funciones Lambda disparadas por **SQS** o **EventBridge Scheduler** |
-| Base de datos | Una PostgreSQL por servicio | **Una instancia RDS for PostgreSQL** con un esquema por servicio, detrás de **RDS Proxy** |
+| Base de datos | Una PostgreSQL por servicio; MongoDB en Global y Reportes | **Una instancia RDS for PostgreSQL** con un esquema por servicio, detrás de **RDS Proxy**; **DynamoDB** para los modelos de lectura de Reportes |
 | Documentos | Sin definir | **Amazon S3** cifrado, con escaneo de malware de **GuardDuty** |
 | Eventos | SQS | **EventBridge** + **SQS** con DLQ, patrón outbox |
 | Compra de fracciones | Sin coordinación | Saga en **AWS Step Functions** |
 | Idempotencia | Sin definir | **Powertools for AWS Lambda (.NET)** con DynamoDB |
 | Llaves de Stellar | Sin definir | **AWS KMS** con llaves Ed25519 |
-| Consultas entre tenants | Servicio Global con acceso a todas las bases | Modelos de lectura en Reportes, alimentados por eventos |
+| Consultas entre tenants | Servicio Global con acceso a todas las bases | Modelos de lectura de Reportes en DynamoDB, alimentados por eventos |
 | Asistente de IA | AgentCore + DynamoDB | **AgentCore Runtime, Gateway, Identity y Memory**, con **Bedrock Guardrails** |
 | Observabilidad y auditoría | Sin definir | **CloudWatch**, **X-Ray**, **CloudTrail**, **GuardDuty** |
 | Infraestructura | Sin definir | **AWS CDK** en C# |
@@ -53,16 +53,16 @@ Esta tabla describe el diseño actual. La última columna indica qué lo reempla
 | App de clientes | Next.js (Node.js) | | Explorar activos, detalle del activo, registro y KYC, cargar saldo, comprar fracciones, portafolio y detalle de renta, mercado secundario, panel de administración | Amplify Hosting, sin el panel de administración (sección 3) |
 | App de vendedores | Next.js (Node.js) | | Portal de vendedores | Amplify Hosting (sección 3) |
 | Gateway | .NET con YARP | 5000 | Punto de entrada único para las dos apps y para AgentCore | **Se elimina.** Lo reemplaza API Gateway REST API con WAF (sección 4) |
-| Global | .NET + worker | 8080 | Consultas a todas las bases de datos de los distintos tenants | **Se elimina.** Reportes asume su función con modelos de lectura (sección 6.4) |
+| Global | .NET + worker + MongoDB | 8080 | Consultas a todas las bases de datos de los distintos tenants | **Se elimina.** Reportes asume su función con modelos de lectura (sección 6.4) |
 | Admin | .NET + worker + PostgreSQL | 8080 | Multitenencia, identidad, clientes, planes y aprovisionamiento | Lambda. La identidad pasa a Cognito; Admin conserva tenants, planes, aprovisionamiento y KYC (sección 5) |
 | Tokenization | .NET + PostgreSQL | 8081 | Emisión, transferencias y conciliación en cadena | Lambda sin ruta pública, alimentada por SQS FIFO (sección 8) |
 | Inmuebles y Operación | .NET + PostgreSQL | 8082 | Inmuebles, contratos, documentos, avalúos y cierres mensuales | Lambda; documentos en S3 |
 | Caja y Pagos | .NET + PostgreSQL | 8083 | Depósitos, retiros, reservas de saldo, libro mayor y conciliación | Lambda; también recibe las distribuciones de renta |
 | Comercio e Inversión | .NET + PostgreSQL | 8084 | KYC, ofertas, órdenes, ejecuciones y distribuciones | Lambda; inicia la saga de compra en Step Functions |
-| Reportes | .NET + worker | 8085 | Contenido e información para generar reportes | Lambda; absorbe a Global |
+| Reportes | .NET + worker + MongoDB | 8085 | Contenido e información para generar reportes | Lambda con DynamoDB en lugar de MongoDB; absorbe a Global (sección 6.5) |
 | AI Concierge | Python + DynamoDB, en AgentCore | | Asistente de inversión | AgentCore Runtime, Gateway, Identity y Memory (sección 10) |
 | Mensajería | SQS | | Eventos entre Tokenization, Inmuebles y Operación, Caja y Pagos, y Comercio e Inversión | EventBridge + SQS con outbox y DLQ (sección 7) |
-| Bases de datos | Una PostgreSQL por servicio | | | Una instancia RDS PostgreSQL, un esquema por servicio (sección 6) |
+| Bases de datos | Una PostgreSQL por servicio; MongoDB en Global y Reportes | | | Una instancia RDS PostgreSQL, un esquema por servicio; DynamoDB para Reportes (sección 6) |
 
 Hoy los contenedores se construyen con Docker. El repositorio tiene los proyectos `Adminstracion`, `Archivos`, `Expedientes` y `Gateway`, todos en .NET 10. El proyecto `Gateway` (YARP) deja de usarse con API Gateway. La relación entre los demás proyectos y los servicios del diagrama está en la sección 14.
 
@@ -82,13 +82,19 @@ Hoy los contenedores se construyen con Docker. El repositorio tiene los proyecto
 | O10 | El KYC está en Comercio e Inversión. | Mezcla cumplimiento con negociación. | El KYC pasa a Admin, junto al registro del cliente. | 5 |
 | O11 | Las distribuciones de renta están en Comercio e Inversión. | El pago de rentas es trabajo del libro mayor y de la cadena. | Las distribuciones pasan a Caja y Pagos. | 4 |
 | O12 | Hay una base PostgreSQL por servicio. | Cinco o más instancias cuestan mucho para un MVP. | Una instancia RDS con un esquema por servicio. | 6 |
-| O13 | Los contratos, avalúos y documentos de KYC no tienen almacenamiento definido. | Documentos legales y datos personales sin cifrado ni control de acceso definidos. | S3 cifrado con KMS, URL prefirmadas y escaneo de malware. | 6.6 |
+| O13 | Los contratos, avalúos y documentos de KYC no tienen almacenamiento definido. | Documentos legales y datos personales sin cifrado ni control de acceso definidos. | S3 cifrado con KMS, URL prefirmadas y escaneo de malware. | 6.7 |
 | O14 | No aparecen el cómputo, los secretos, la observabilidad, los respaldos ni la infraestructura como código. | Sin trazas ni respaldos no se puede auditar ni recuperar un libro mayor. | Lambda, Secrets Manager, CloudWatch, X-Ray, CloudTrail, respaldos de RDS y CDK. | 11 |
-| O15 | Global y Reportes muestran un ícono verde con una "N" (parece Nginx). | Si es Nginx, sobra: el enrutamiento lo hace API Gateway. | Se elimina si es Nginx. | 14 |
+| O15 | Global y Reportes usan MongoDB. | Una base más para operar, respaldar y asegurar, fuera de los servicios administrados de AWS. | DynamoDB para los modelos de lectura de Reportes; Global desaparece. | 6.5 |
 
 ## 2. Arquitectura propuesta
 
 ### 2.1 Vista general
+
+Diagrama con los íconos oficiales de AWS. Se genera con [img/arquitectura-aws.py](img/arquitectura-aws.py) (`uv run --with diagrams python docs/img/arquitectura-aws.py`, requiere Graphviz); hay que regenerarlo cuando cambie el diseño.
+
+![Arquitectura en AWS](img/arquitectura-aws.png)
+
+El mismo diseño en Mermaid, editable directamente en este documento:
 
 ```mermaid
 flowchart TB
@@ -123,6 +129,7 @@ flowchart TB
     RDS[("RDS PostgreSQL<br/>un esquema por servicio")]
     S3[("S3: documentos<br/>+ escaneo de malware")]
     DDB[("DynamoDB<br/>idempotencia")]
+    DDBR[("DynamoDB<br/>modelos de lectura de Reportes")]
 
     subgraph EV["Eventos"]
         EB["EventBridge"]
@@ -157,6 +164,7 @@ flowchart TB
     PROXY --> RDS
     SVC --> S3
     SVC --> DDB
+    L_REP --> DDBR
     L_TOK -- firma --> KMS
     SVC --> NAT
     L_TOK --> NAT
@@ -175,6 +183,7 @@ flowchart TB
 | Cómputo .NET | Lambda, una función por servicio | Con tráfico de MVP cuesta unos pocos dólares al mes. El código ASP.NET Core se conserva. |
 | Workers | Lambda disparada por SQS o EventBridge Scheduler | Lambda no sostiene procesos largos y corta cada invocación a los 15 minutos. |
 | Base de datos | Una instancia RDS for PostgreSQL, un esquema y un usuario por servicio | Mantiene las fronteras entre servicios con el costo de una sola instancia. |
+| Modelos de lectura de Reportes | DynamoDB bajo demanda, en lugar de MongoDB | Sin servidores que operar, cobra por uso y escala solo. Los datos de lectura se arman desde eventos, un patrón que DynamoDB resuelve bien. |
 | Conexiones | RDS Proxy con autenticación IAM | Absorbe los picos de conexiones de Lambda y elimina contraseñas de base de datos en las funciones. |
 | Saga de compra | Step Functions (Standard) | Estado, reintentos, compensaciones y tiempos de espera administrados, con historial visible de cada compra. |
 | Eventos | EventBridge para distribuir, SQS para consumir, outbox en cada servicio | Varios servicios necesitan el mismo evento; SQS solo entrega cada mensaje a un consumidor. |
@@ -214,7 +223,7 @@ API Gateway REST API enruta por prefijo de ruta. Los puertos 8080 a 8085 desapar
 | Inmuebles y Operación | `/properties/*` | Inmuebles, contratos, documentos, avalúos, cierres mensuales | `properties` | HTTP, Scheduler (cierre mensual) |
 | Caja y Pagos | `/wallet/*` | Depósitos, retiros, reservas de saldo, libro mayor, conciliación y distribuciones de renta (O11) | `ledger` | HTTP, SQS, Step Functions, Scheduler |
 | Comercio e Inversión | `/trading/*` | Ofertas, órdenes, ejecuciones, mercado secundario; inicia la saga de compra | `trading` | HTTP, Step Functions |
-| Reportes | `/reports/*` | Reportes y modelos de lectura entre tenants; absorbe al servicio Global (O2) | `reporting` | HTTP, SQS (todos los eventos de dominio), Scheduler |
+| Reportes | `/reports/*` | Reportes y modelos de lectura entre tenants; absorbe al servicio Global (O2) | DynamoDB (sección 6.5) | HTTP, SQS (todos los eventos de dominio), Scheduler |
 
 Tokenization no tiene ruta pública. Solo recibe instrucciones por su cola FIFO, así nadie puede pedirle una emisión o una transferencia desde internet.
 
@@ -281,12 +290,36 @@ Así las fronteras entre servicios se mantienen y más adelante cualquier esquem
 El servicio Global lee directamente las bases de todos los tenants (O2). En su lugar:
 
 1. Cada servicio publica eventos de dominio (orden ejecutada, depósito acreditado, avalúo registrado, etc.).
-2. Reportes consume esos eventos y arma sus propias tablas de lectura en el esquema `reporting`.
+2. Reportes consume esos eventos y arma sus modelos de lectura en DynamoDB (sección 6.5).
 3. Las consultas entre tenants van a Reportes, que exige el grupo `operadores` y registra quién consultó qué.
 
 Ningún servicio, además del dueño de cada esquema, tiene credenciales para leerlo.
 
-### 6.5 Aislamiento entre tenants
+### 6.5 Modelos de lectura de Reportes en DynamoDB
+
+Global y Reportes usan MongoDB en el diseño actual (O15). En el diseño propuesto, Reportes guarda sus modelos de lectura en DynamoDB y Global desaparece.
+
+- **Una tabla en modo bajo demanda**, con la llave de partición `TENANT#<tenant_id>` y la llave de ordenamiento `<TIPO>#<fecha>#<id>` (por ejemplo `ORDEN#2026-11-15#123`). Cada consulta de un tenant lee solo su partición.
+- **Índices secundarios globales (GSI)** para las consultas entre tenants que necesitan los operadores, por ejemplo por tipo de registro y fecha. Cada índice responde a una consulta concreta.
+- **Diseño por patrones de acceso.** DynamoDB no tiene consultas libres como MongoDB: hay que listar antes las consultas que usan las pantallas y los reportes y diseñar las llaves e índices para ellas. Esa lista es parte del trabajo de migración (**Por confirmar**, sección 14).
+- **Análisis ad hoc** (cruces, agregados grandes, exportaciones): la exportación de DynamoDB a S3 más **Amazon Athena** responde consultas SQL sobre los datos sin cargar la tabla.
+- **Aislamiento**: la política de IAM de la función de Reportes usa la condición `dynamodb:LeadingKeys` en las rutas de un tenant, así una consulta de un tenant no puede leer la partición de otro. Las consultas entre tenants usan un rol separado, solo para el grupo `operadores`.
+- **Respaldos**: recuperación a un punto en el tiempo (PITR) activada.
+- **Reconstrucción**: como los modelos de lectura se arman desde eventos, se pueden regenerar reproduciendo el archivo de EventBridge (sección 7.2).
+- El acceso desde la VPC usa el endpoint de tipo gateway de DynamoDB, que es gratuito.
+
+Alternativas evaluadas. DynamoDB es la decisión para el MVP; se puede revisar cuando se conozcan las consultas reales de Reportes (P1).
+
+| Opción | Costo extra aprox./mes | Cuándo conviene |
+|---|---|---|
+| Esquema `reporting` en la misma RDS PostgreSQL | $0 (una réplica de lectura, ~$26, si los reportes cargan la instancia) | Si los reportes son sobre todo filtros, sumas y agrupaciones. SQL completo, JSONB para datos tipo documento, sin servicios nuevos. |
+| Amazon DocumentDB (compatible con MongoDB) | ~$55 o más, más E/S | Si se quiere conservar el código de MongoDB con un servicio administrado por AWS. No es 100% compatible: hay que probar las consultas. |
+| MongoDB Atlas en AWS | $0 (capa gratuita) a ~$60 | Si se quiere conservar el código de MongoDB sin cambios y aceptar otro proveedor. |
+| S3 + Athena | Centavos a unos dólares (~$5 por TB escaneado) | Como complemento para reportes grandes, históricos o exportaciones. Responde en segundos, no sirve para pantallas. |
+
+Redshift Serverless y OpenSearch Serverless quedaron descartados: su costo mínimo es de cientos de dólares al mes.
+
+### 6.6 Aislamiento entre tenants
 
 Cada tabla con datos de un tenant tiene una columna `tenant_id` y una política de **Row-Level Security** de PostgreSQL. Al abrir la transacción, el servicio fija `app.tenant_id` con el valor del JWT y la base solo devuelve las filas de ese tenant, aunque una consulta olvide filtrar.
 
@@ -298,7 +331,7 @@ Cada tabla con datos de un tenant tiene una columna `tenant_id` y una política 
 
 Si algún tenant exige aislamiento físico por contrato, se le puede dar una instancia propia más adelante (**Por confirmar**, sección 14).
 
-### 6.6 Documentos en S3
+### 6.7 Documentos en S3
 
 Contratos, avalúos, documentos de inmuebles, documentos de KYC y reportes generados viven en S3 (O13).
 
@@ -486,7 +519,7 @@ Precios aproximados de us-east-1, con tráfico bajo. La columna "Mínimo" omite 
 | RDS Proxy | $0 | $22 | Omitible al inicio con pools pequeños |
 | NAT Gateway | $32 | $32 | Más transferencia de datos |
 | SQS, EventBridge, Scheduler | $1 | $2 | |
-| DynamoDB (idempotencia) | $0 | $1 | Bajo demanda |
+| DynamoDB (idempotencia y Reportes) | $1 | $5 | Bajo demanda, con PITR |
 | S3 | $1 | $3 | |
 | KMS | $8 | $10 | 6 llaves de Stellar y llaves de S3 |
 | Secrets Manager | $2 | $3 | Pocos secretos gracias a la autenticación IAM |
@@ -511,12 +544,12 @@ No incluye AgentCore ni el modelo de lenguaje, que se cobran por uso, ni dominio
 
 | # | Pregunta | Afecta a |
 |---|---|---|
-| P1 | ¿Qué es el ícono verde con una "N" en Global y Reportes? Si es Nginx, ¿para qué se usa? | Sección 1.2 |
+| P1 | ¿Qué consultas usan hoy las pantallas y los reportes sobre MongoDB? Definen las llaves e índices de DynamoDB. | Sección 6.5 |
 | P2 | ¿Cómo se relacionan los proyectos del repositorio (`Adminstracion`, `Archivos`, `Expedientes`) con los servicios del diagrama? | Secciones 1 y 4 |
 | P3 | ¿Se aceptan los cambios de frontera: KYC a Admin, distribuciones a Caja y Pagos, Global absorbido por Reportes? | Secciones 4 y 6.4 |
 | P4 | ¿Un solo user pool de Cognito con grupos, o un pool separado para operadores? | Sección 5 |
-| P5 | ¿Algún tenant necesita aislamiento físico de datos por contrato? | Sección 6.5 |
-| P6 | ¿Qué plazos de retención exige la norma boliviana para contratos, avalúos y documentos de KYC? (**Asesoría legal**) | Sección 6.6 |
+| P5 | ¿Algún tenant necesita aislamiento físico de datos por contrato? | Sección 6.6 |
+| P6 | ¿Qué plazos de retención exige la norma boliviana para contratos, avalúos y documentos de KYC? (**Asesoría legal**) | Sección 6.7 |
 | P7 | ¿Basta un minuto de retraso al leer Horizon, o hace falta un proveedor de indexación? | Sección 9.2 |
 | P8 | ¿Quién custodia el firmante externo de la cuenta emisora? | Sección 8.2 |
 | P9 | ¿En qué región se despliega: us-east-1 o sa-east-1? Confirmar que AgentCore y los demás servicios estén disponibles en la región elegida. | Secciones 10 y 12 |

@@ -3,4 +3,10 @@
   <Project Path="../Archivos/Archivos.csproj" />
   <Project Path="../Expedientes/Expedientes.csproj" Id="0f7de5df-01ec-4dae-8679-f35c037e8373" />
   <Project Path="Adminstracion.csproj" />
+  <Project Path="../InmueblesOperacion/InmueblesOperacion.csproj" />
+  <Project Path="../CajaPagos/CajaPagos.csproj" />
+  <Project Path="../ComercioInversion/ComercioInversion.csproj" />
+  <Project Path="../Tokenizacion/Tokenizacion.csproj" />
+  <Project Path="../Reportes/Reportes.csproj" />
+  <Project Path="../Global/Global.csproj" />
 </Solution>

@@ -1,0 +1,4 @@
+@ComercioInversion_HostAddress = https://localhost:7313
+
+GET {{ComercioInversion_HostAddress}}/openapi/v1.json
+Accept: application/json

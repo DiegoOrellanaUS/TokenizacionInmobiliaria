@@ -1,0 +1,4 @@
+@Tokenizacion_HostAddress = https://localhost:7314
+
+GET {{Tokenizacion_HostAddress}}/openapi/v1.json
+Accept: application/json

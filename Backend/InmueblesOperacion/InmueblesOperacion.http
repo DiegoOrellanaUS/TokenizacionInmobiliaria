@@ -1,0 +1,4 @@
+@InmueblesOperacion_HostAddress = https://localhost:7311
+
+GET {{InmueblesOperacion_HostAddress}}/openapi/v1.json
+Accept: application/json

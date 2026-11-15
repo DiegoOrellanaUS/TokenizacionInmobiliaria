@@ -1,0 +1,4 @@
+@Reportes_HostAddress = https://localhost:7315
+
+GET {{Reportes_HostAddress}}/openapi/v1.json
+Accept: application/json

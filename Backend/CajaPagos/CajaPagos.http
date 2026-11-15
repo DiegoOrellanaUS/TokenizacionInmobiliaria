@@ -1,0 +1,4 @@
+@CajaPagos_HostAddress = https://localhost:7312
+
+GET {{CajaPagos_HostAddress}}/openapi/v1.json
+Accept: application/json

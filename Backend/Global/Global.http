@@ -1,0 +1,4 @@
+@Global_HostAddress = https://localhost:7316
+
+GET {{Global_HostAddress}}/openapi/v1.json
+Accept: application/json

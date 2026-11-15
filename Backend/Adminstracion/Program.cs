@@ -1,3 +1,4 @@
+using Adminstracion.Data;
 using Scalar.AspNetCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
@@ -7,6 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("ArchivosMultitenenciaAdministracionContext");
 
 builder.Services.AddDbContext<AdminstracionContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddDbContext<AdminContext>(options =>
+    options.UseNpgsql(connectionString, postgres => postgres.MigrationsHistoryTable("__AdminMigrationsHistory")));
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();

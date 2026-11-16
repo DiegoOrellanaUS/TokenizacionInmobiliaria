@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Estado | Borrador para revisión del equipo |
-| Versión | 2.0, 2026-11-15 |
+| Versión | 2.1, 2026-11-16 |
 | Parte de | Diagrama general "AWS Cloud" del equipo |
 | Documento relacionado | [metodos-de-valoracion-de-tokens-inmobiliarios.md](metodos-de-valoracion-de-tokens-inmobiliarios.md) (flujos de compra, cuentas de Stellar y cascada de distribución) |
 | Alcance | MVP. La sección 13 lista los cambios necesarios antes de operar con fondos reales de inversionistas. |
@@ -24,7 +24,7 @@ El diseño propuesto:
 
 | Necesidad | Diseño actual | Diseño propuesto |
 |---|---|---|
-| Frontends | Next.js en contenedores Docker | **Amplify Hosting**, una app por frontend, con WAF |
+| Frontends | Next.js en contenedores Docker | **Amplify Hosting**, tres apps Next.js (clientes, vendedores, administración) en un monorepo, con WAF; 54 pantallas en total |
 | Entrada al backend | YARP en el puerto 5000 | **API Gateway REST API** con WAF |
 | Identidad y login | Construida dentro del servicio Admin | **Amazon Cognito**, con MFA y grupos por rol |
 | Servicios .NET | Contenedores en los puertos 8080 a 8085 | **AWS Lambda**, una función por servicio |
@@ -148,7 +148,9 @@ flowchart TB
     FE -- login --> COG
     FE -- JWT --> APIGW
     APIGW -- autorizador Cognito --> SVC
-    U -- chat --> ACR
+    WEB -- chat --> ACR
+    FE -- URL prefirmadas --> S3
+    FE -- SDK de KYC --> EXT
     ACR --> ACM
     ACR --> ACG -- token del usuario --> APIGW
     L_COM --> SFN
@@ -196,21 +198,376 @@ flowchart TB
 
 ## 3. Frontends en Amplify Hosting
 
-Cada frontend es una app de Amplify separada, conectada a su repositorio o carpeta en Git. Amplify construye en cada push, publica una URL de vista previa por rama y despliega Next.js con renderizado del lado del servidor.
+El sistema tiene tres aplicaciones Next.js, una por tipo de usuario. Cada una es una app separada de Amplify Hosting, con su dominio, su WAF y su grupo de Cognito. Comparten código en un monorepo (sección 3.2), pero se despliegan y protegen por separado. Así un error en una app no expone las funciones de otra (O3).
 
-| App | Usuarios | Dominio sugerido | WAF |
+### 3.1 Las tres apps
+
+| App | Usuarios | Grupo de Cognito | Dominio sugerido | Rutas de API que usa | Pantallas | WAF |
+|---|---|---|---|---|---|---|
+| Next.js clientes | Inversionistas | `inversionistas` | `app.dominio` | `/properties/*` (lectura), `/kyc/*`, `/wallet/*`, `/trading/*`, `/reports/*` (solo datos propios) y AgentCore | 19 | Sí: reglas administradas de AWS y límite de tasa por IP |
+| Next.js vendedores | Vendedores de inmuebles | `vendedores` | `vendedores.dominio` | `/properties/*`, `/kyc/*` (verificación de la empresa), `/trading/*` (lectura de sus ofertas), `/wallet/*` (sus cobros), `/reports/*` (solo datos propios) | 17 | Opcional en el MVP (sección 12) |
+| Next.js administración | Operadores internos | `operadores` | `admin.dominio` | `/admin/*`, `/tenants/*` y las funciones de operador de los demás servicios | 18 | Sí: además, solo IPs de la oficina o de la VPN |
+
+**Total: 54 pantallas.** Las secciones 3.10 a 3.12 las detallan, la 3.17 muestra el mapa de integraciones y la 3.18 los servicios que usa cada pantalla.
+
+La app de administración es **nueva**: sale de la app de clientes (O3). Además de la restricción por IP, exige MFA y un usuario en el grupo `operadores`, y llama a rutas propias de API Gateway (`/admin/*`). Las funciones de operador de otros servicios (aprobar distribuciones, revisar sagas, conciliar) revisan el grupo `operadores` en el JWT.
+
+### 3.2 Stack y organización del código
+
+| Tema | Decisión | Motivo |
+|---|---|---|
+| Framework | Next.js con App Router y TypeScript, en una versión que soporte Amplify Hosting (**Por confirmar**, P14) | SSR, ISR y middleware soportados por Amplify |
+| Repositorio | **Monorepo** con pnpm workspaces y Turborepo: `apps/clientes`, `apps/vendedores`, `apps/admin` y paquetes compartidos (**Por confirmar**, P11) | Amplify soporta monorepos con una carpeta raíz por app (`appRoot`) |
+| Paquete `ui` | Tailwind CSS + shadcn/ui, con los tokens de diseño de la marca | Un solo sistema visual en las tres apps |
+| Paquete `api-client` | Tipos y cliente generados desde la definición OpenAPI de la REST API (`openapi-typescript` u otro generador) | Front y back comparten el contrato; un cambio en la API rompe la compilación, no la producción |
+| Paquete `auth` | Configuración de Amplify Auth, middleware y utilidades de grupos y claims | La misma lógica de sesión en las tres apps |
+| Paquete `config` | ESLint, TypeScript y Tailwind compartidos | Mismas reglas en todo el código |
+| Datos del servidor | TanStack Query | Caché, reintentos, invalidación y consulta periódica de estados |
+| Formularios | React Hook Form + Zod | Validación en el cliente con los mismos esquemas que espera la API |
+| Estado global | Solo la sesión y preferencias de la interfaz | El resto vive en TanStack Query |
+| Idioma y formato | Español, montos con `Intl.NumberFormat` (USD y Bs), fechas en la zona `America/La_Paz` | Coherencia en montos y fechas de rentas |
+
+```
+frontend/
+├── apps/
+│   ├── clientes/        app.dominio
+│   ├── vendedores/      vendedores.dominio
+│   └── admin/           admin.dominio
+└── packages/
+    ├── ui/              componentes y tokens de diseño
+    ├── api-client/      cliente y tipos generados desde OpenAPI
+    ├── auth/            Amplify Auth, middleware, grupos
+    └── config/          ESLint, TypeScript, Tailwind
+```
+
+Dentro de cada app, el código se organiza por funcionalidad (`features/catalogo`, `features/compra`, `features/billetera`…). Las pantallas solo componen; la lógica de cada funcionalidad vive en su carpeta.
+
+### 3.3 Autenticación y autorización
+
+- **Amplify Auth** (`aws-amplify/auth`) con el user pool de Cognito. Los formularios de registro, ingreso, MFA y recuperación son propios de cada app.
+- **`@aws-amplify/adapter-nextjs`** guarda la sesión en cookies y permite leerla en el servidor. El **middleware de Next.js** revisa la sesión y el grupo antes de mostrar cualquier ruta privada:
+  - clientes: rutas privadas solo para `inversionistas`;
+  - vendedores: toda la app solo para `vendedores`;
+  - administración: toda la app solo para `operadores`.
+- **MFA**: obligatorio para vendedores y operadores desde el primer ingreso (configuración TOTP con `setUpTOTP` y `verifyTOTPSetup`). En clientes es opcional, pero la pantalla de retiro exige tenerlo activo (sección 5).
+- **Claims en la interfaz**: `tenant_id` y `kyc_status` llegan en el JWT (sección 5). La interfaz los usa para mostrar u ocultar acciones (por ejemplo, "Verifica tu identidad para invertir"). **La interfaz nunca decide permisos**: cada servicio los vuelve a revisar.
+- **Token hacia API Gateway**: el front envía en `Authorization` el token que espere el autorizador de Cognito: el ID token, o el access token si se configuran scopes (**Por confirmar**, P12). Amplify lo renueva solo antes de que expire.
+- **Tenant**: si cada tenant tiene su propia marca o dominio, el middleware resuelve el tenant por el dominio antes del login y aplica su tema visual (**Por confirmar**, P15).
+
+### 3.4 Integración con API Gateway
+
+- Cada rama de Amplify define `NEXT_PUBLIC_API_URL` apuntando al API Gateway de su ambiente (desarrollo, staging, producción). Ninguna variable `NEXT_PUBLIC_*` lleva secretos.
+- El cliente HTTP del paquete `api-client` agrega el token, un identificador de correlación por solicitud (que se cruza con las trazas de X-Ray, sección 11.3) y reintentos con espera exponencial solo en errores 429 y 5xx de operaciones de lectura.
+- **Idempotencia**: toda operación que mueve dinero o tokens (compra, retiro, publicar oferta, aceptar oferta) envía una llave de idempotencia (UUID) generada por el front al abrir la pantalla, no al hacer clic. Si el usuario hace doble clic o se corta la red, el reintento no duplica la operación (Powertools, sección 7.2). El back define si va en el cuerpo o en un encabezado `Idempotency-Key`.
+- **Errores**: la interfaz distingue validación (400, se muestra junto al campo), sesión (401, vuelve a ingresar), permisos (403), límite de tasa (429, se reintenta) y errores del sistema (5xx, mensaje genérico con el identificador de correlación para soporte).
+- **Catálogo público**: el autorizador de Cognito exige un JWT, pero el catálogo de activos debe verse sin login. Dos opciones: rutas `GET /properties` públicas sin autorizador, protegidas por WAF y límites de tasa, o SSR en Amplify con una credencial de servicio (**Por confirmar**, P13).
+
+### 3.5 Operaciones asíncronas
+
+La integración con Lambda tiene un máximo de 29 segundos (sección 4), así que las operaciones largas responden de inmediato con un identificador y el front consulta su estado.
+
+| Operación | Quién confirma | Estados que muestra el front | Cómo se actualiza |
 |---|---|---|---|
-| Next.js clientes | Inversionistas | `app.dominio` | Sí: reglas administradas de AWS y límite de tasa por IP |
-| Next.js vendedores | Vendedores de inmuebles | `vendedores.dominio` | Opcional en el MVP (sección 12) |
-| Next.js administración | Operadores internos | `admin.dominio` | Sí: además, solo IPs de la oficina o de la VPN |
+| Compra de fracciones | Saga de Step Functions (sección 7.3) | `pendiente` → `ejecutada`, o `rechazada`, `fallida`, `requiere revisión` | Consulta cada 2 s durante el primer minuto y luego cada 10 s; el usuario puede salir y ver el resultado en Mis órdenes |
+| Depósito | Webhook de Pollar (sección 9.1) | Esperando pago → acreditado, o vencido | Consulta cada 5 s mientras la pantalla está abierta |
+| Retiro | Caja y Pagos y Pollar | Solicitado → enviado → completado, o rechazado | Consulta al abrir la pantalla y aviso al completarse |
+| Verificación KYC | Webhook del proveedor de KYC | Sin iniciar → en revisión → aprobado o rechazado | Consulta al volver del flujo del proveedor y al abrir la app |
+| Escaneo de documentos | GuardDuty (sección 6.7) | Subiendo → escaneando → listo, o rechazado | Consulta cada 3 s hasta tener resultado |
+| Distribución de renta | Saga de pago de rentas | Calculada → aprobada → pagada | Lectura al abrir la pantalla |
 
-La app de administración es **nueva**: sale de la app de clientes (O3). Además de la restricción por IP, exige MFA y un usuario en el grupo de Cognito `operadores`, y llama a rutas propias de API Gateway (`/admin/*`).
+Cada resultado con transacción en Stellar muestra un **comprobante público**: un enlace al explorador de Stellar con el hash. En la interfaz se llama "Ver comprobante", no "hash".
 
-Notas de Amplify:
+En una etapa posterior, la consulta periódica se puede reemplazar por notificaciones en tiempo real (por ejemplo, AppSync Events o WebSockets de API Gateway). No es necesario para el MVP.
 
-- El WAF de Amplify cuesta $15 al mes por app, más el uso de WAF. Las reglas se crean en la región global de CloudFront (us-east-1).
-- Las variables de entorno de cada rama apuntan al API Gateway del ambiente correspondiente (desarrollo, staging, producción).
-- Los navegadores llaman directamente a API Gateway con el JWT de Cognito. Amplify no necesita acceso a la VPC.
+### 3.6 Proveedores externos en el front
+
+- **KYC**: el front pide a `/kyc/*` una sesión de verificación y abre el flujo del proveedor (SDK web o página alojada, según el proveedor elegido, **Por confirmar**, P16). El resultado llega por webhook al back; el front solo consulta el estado. Las fotos del documento nunca pasan por el código de la app.
+- **Pollar**: el front pide a `/wallet/*` una intención de depósito y muestra el QR o los datos de pago que devuelve el back. Si Pollar ofrece un widget, se integra igual: el back crea la sesión y el front solo la muestra (**Por confirmar**, P16).
+- **Stellar**: el front no firma ni envía transacciones. Las llaves viven en KMS (sección 8.2). El front solo muestra resultados y enlaces al explorador.
+
+### 3.7 Archivos con URL prefirmadas
+
+Las apps de vendedores y de administración suben documentos (contratos, avalúos, fotos, documentos de la empresa) directo a S3 (sección 6.7):
+
+1. El front pide al servicio dueño una URL prefirmada para subir, indicando tipo y tamaño del archivo.
+2. El navegador sube el archivo con `PUT` directo a S3. El archivo no pasa por Lambda ni por API Gateway.
+3. El front avisa al servicio que terminó la carga.
+4. El front muestra "escaneando" hasta que GuardDuty marque el archivo como limpio (sección 3.5).
+5. Para ver o descargar, el front pide una URL prefirmada de lectura de corta duración.
+
+Requisitos: CORS en los buckets solo para los dominios de las apps, límite de tamaño y tipos permitidos validados en el front y en el back, y barra de progreso en archivos grandes.
+
+### 3.8 Renderizado
+
+| Tipo de pantalla | Estrategia | Motivo |
+|---|---|---|
+| Públicas de clientes (inicio, catálogo, detalle del activo) | ISR con revalidación cada pocos minutos | Carga rápida, SEO y enlaces compartibles en redes |
+| Datos vivos en pantallas públicas (% recaudado, precio) | Componente de cliente con TanStack Query | El resto de la página sigue siendo estática |
+| Privadas de las tres apps | Middleware en el servidor para la sesión y el grupo; datos en el cliente con TanStack Query | Datos personales que cambian seguido y no necesitan SEO |
+| Formularios (registro, compra, postulación) | Componentes de cliente | Interacción y validación inmediata |
+
+Las apps de vendedores y de administración no necesitan SEO. Sus pantallas se marcan `noindex`.
+
+### 3.9 AI Concierge en la app de clientes
+
+- El asistente es un **componente de chat** disponible en las pantallas privadas de clientes, no una pantalla aparte.
+- El front invoca AgentCore Runtime con el JWT del inversionista (sección 10) y muestra la respuesta a medida que llega. Si el navegador no puede invocar AgentCore directamente, una ruta de Next.js hace de intermediario sin guardar el token (**Por confirmar**, P17).
+- Si el asistente sugiere una compra, el chat muestra un botón que lleva a la pantalla de compra con los datos precargados. El inversionista confirma ahí y la orden sigue la saga normal. Ninguna acción del chat mueve dinero.
+- El chat avisa que las proyecciones son estimaciones y no muestra datos de otros usuarios.
+
+### 3.10 Pantallas de la app de clientes (19)
+
+| # | Ruta | Pantalla | Render | Acceso | Integraciones |
+|---|---|---|---|---|---|
+| C1 | `/` | Inicio | ISR | Público | `GET /properties` (destacados) |
+| C2 | `/activos` | Catálogo de activos con filtros | ISR + cliente | Público | `GET /properties` |
+| C3 | `/activos/[id]` | Detalle del activo: datos, documentos públicos, avalúo, rendimiento estimado, % recaudado | ISR + cliente | Público | `GET /properties/{id}`, `GET /trading/offers?property={id}` |
+| C4 | `/registro` | Registro | Cliente | Público | Cognito `signUp` y confirmación por correo |
+| C5 | `/ingresar` | Ingreso, con desafío de MFA si está activo | Cliente | Público | Cognito `signIn`, `confirmSignIn` |
+| C6 | `/recuperar` | Recuperar contraseña | Cliente | Público | Cognito `resetPassword` |
+| C7 | `/verificacion` | Verificación de identidad (KYC) y su estado | Cliente | Inversionista | `/kyc/*` (sesión y estado), flujo del proveedor de KYC |
+| C8 | `/billetera` | Saldo en USDC y movimientos | Cliente | Inversionista | `GET /wallet/balance`, `GET /wallet/transactions` |
+| C9 | `/billetera/depositar` | Cargar saldo y estado del depósito | Cliente | Inversionista con KYC | `POST /wallet/deposits`, `GET /wallet/deposits/{id}`, Pollar |
+| C10 | `/billetera/retirar` | Retirar a cuenta bancaria | Cliente | Inversionista con KYC y MFA | `POST /wallet/withdrawals`, `GET /wallet/withdrawals/{id}`, Pollar |
+| C11 | `/activos/[id]/comprar` | Comprar fracciones: cantidad, costo total, simulación de rendimiento | Cliente | Inversionista con KYC | `POST /trading/orders` (con llave de idempotencia), `GET /wallet/balance` |
+| C12 | `/ordenes/[id]` | Estado de la orden y comprobante | Cliente | Inversionista | `GET /trading/orders/{id}` (consulta periódica), explorador de Stellar |
+| C13 | `/ordenes` | Mis órdenes | Cliente | Inversionista | `GET /trading/orders` |
+| C14 | `/portafolio` | Portafolio: valor, rendimiento y rentas cobradas | Cliente | Inversionista | `GET /reports/portfolio` (modelo de lectura), `GET /wallet/balance` |
+| C15 | `/portafolio/[activoId]` | Detalle de la posición: fracciones, NAV, historial de rentas con comprobante | Cliente | Inversionista | `GET /reports/portfolio/{propertyId}`, `GET /wallet/distributions?property={id}` |
+| C16 | `/mercado` | Mercado secundario: ofertas disponibles | Cliente | Inversionista | `GET /trading/offers`, `POST /trading/orders` |
+| C17 | `/mercado/vender` | Publicar oferta de venta de fracciones | Cliente | Inversionista con KYC | `POST /trading/offers` (con llave de idempotencia) |
+| C18 | `/reportes` | Estados de cuenta y certificados descargables | Cliente | Inversionista | `GET /reports/statements`, URL prefirmada de lectura de S3 |
+| C19 | `/cuenta` | Perfil, seguridad (MFA) y preferencias | Cliente | Inversionista | `GET/PUT /kyc/profile`, Cognito `setUpTOTP`, `updateMFAPreference` |
+| — | Componente | AI Concierge | Cliente | Inversionista | AgentCore Runtime (sección 3.9) |
+
+### 3.11 Pantallas de la app de vendedores (17)
+
+| # | Ruta | Pantalla | Render | Acceso | Integraciones |
+|---|---|---|---|---|---|
+| V1 | `/ingresar` | Ingreso con MFA obligatorio | Cliente | Público | Cognito `signIn`, `confirmSignIn` |
+| V2 | `/registro` | Solicitud de registro como vendedor | Cliente | Público | Cognito `signUp`, `POST /kyc/sellers` |
+| V3 | `/seguridad` | Configuración de MFA en el primer ingreso | Cliente | Vendedor | Cognito `setUpTOTP`, `verifyTOTPSetup` |
+| V4 | `/verificacion` | Verificación de la empresa y del representante legal | Cliente | Vendedor | `/kyc/*`, flujo del proveedor de KYC, S3 (documentos) |
+| V5 | `/` | Resumen: inmuebles, ofertas activas, cobros pendientes | Cliente | Vendedor | `GET /reports/seller-summary` |
+| V6 | `/inmuebles` | Mis inmuebles y su estado | Cliente | Vendedor | `GET /properties?owner=me` |
+| V7 | `/inmuebles/nuevo` | Postular inmueble (asistente por pasos) | Cliente | Vendedor verificado | `POST /properties`, `PATCH /properties/{id}` |
+| V8 | `/inmuebles/[id]` | Detalle del inmueble y estado de revisión | Cliente | Vendedor dueño | `GET /properties/{id}` |
+| V9 | `/inmuebles/[id]/documentos` | Documentos: títulos, contratos, fotos | Cliente | Vendedor dueño | URL prefirmadas de S3, `GET /properties/{id}/documents` |
+| V10 | `/inmuebles/[id]/avaluos` | Avalúos registrados (lectura) | Cliente | Vendedor dueño | `GET /properties/{id}/valuations` |
+| V11 | `/inmuebles/[id]/oferta` | Configurar la oferta: fracciones, precio, plazo, mínimo | Cliente | Vendedor dueño | `POST /trading/offerings`, `PUT /trading/offerings/{id}` |
+| V12 | `/inmuebles/[id]/oferta/avance` | Avance de la oferta: recaudado, inversionistas, tiempo restante | Cliente | Vendedor dueño | `GET /trading/offerings/{id}`, `GET /reports/offerings/{id}` |
+| V13 | `/inmuebles/[id]/operacion` | Operación mensual: ingresos y gastos para el cierre | Cliente | Vendedor dueño | `POST /properties/{id}/closings`, `GET /properties/{id}/closings` |
+| V14 | `/inmuebles/[id]/distribuciones` | Distribuciones de renta pagadas, con comprobante | Cliente | Vendedor dueño | `GET /wallet/distributions?property={id}` |
+| V15 | `/cobros` | Cobros y desembolsos al vendedor | Cliente | Vendedor | `GET /wallet/payouts`, `POST /wallet/withdrawals` |
+| V16 | `/reportes` | Reportes descargables | Cliente | Vendedor | `GET /reports/*` (propios), URL prefirmada de lectura de S3 |
+| V17 | `/cuenta` | Perfil de la empresa, usuarios y seguridad | Cliente | Vendedor | `GET/PUT /kyc/sellers/me`, Cognito |
+
+### 3.12 Pantallas de la app de administración (18)
+
+| # | Ruta | Pantalla | Render | Acceso | Integraciones |
+|---|---|---|---|---|---|
+| A1 | `/ingresar` | Ingreso con MFA obligatorio | Cliente | Público, restringido por IP | Cognito `signIn`, `confirmSignIn` |
+| A2 | `/` | Resumen: capital, usuarios, KYC pendientes, alarmas | Cliente | Operador | `GET /reports/admin/summary` |
+| A3 | `/tenants` | Tenants | Cliente | Operador | `GET /tenants` |
+| A4 | `/tenants/[id]` | Detalle del tenant: plan y aprovisionamiento | Cliente | Operador | `GET/PUT /tenants/{id}`, `POST /tenants/{id}/provision` |
+| A5 | `/usuarios` | Operadores y usuarios: grupos, bloqueo | Cliente | Operador | `/admin/users` |
+| A6 | `/kyc` | Cola de verificaciones (personas y empresas) | Cliente | Operador | `GET /kyc?status=pending` |
+| A7 | `/kyc/[id]` | Detalle de una verificación: resultado del proveedor, aprobar o rechazar | Cliente | Operador | `GET /kyc/{id}`, `PATCH /kyc/{id}`, URL prefirmadas de S3 |
+| A8 | `/inmuebles` | Inmuebles en revisión y publicados | Cliente | Operador | `GET /properties?status=` |
+| A9 | `/inmuebles/[id]` | Revisión del inmueble: documentos, contratos, aprobar o pedir cambios | Cliente | Operador | `GET/PATCH /properties/{id}`, URL prefirmadas de S3 |
+| A10 | `/inmuebles/[id]/avaluos` | Registrar y consultar avalúos | Cliente | Operador | `POST/GET /properties/{id}/valuations`, S3 |
+| A11 | `/inmuebles/[id]/emision` | Aprobar la oferta y la emisión del token | Cliente | Operador | `POST /trading/offerings/{id}/approve` (inicia la emisión en Tokenization por eventos) |
+| A12 | `/cierres` | Cierres mensuales por inmueble | Cliente | Operador | `GET/POST /properties/closings` |
+| A13 | `/distribuciones` | Distribuciones de renta: calcular, revisar y aprobar | Cliente | Operador | `GET /wallet/distributions`, `POST /wallet/distributions/{id}/approve` |
+| A14 | `/ordenes` | Órdenes y sagas en `requiere revisión` | Cliente | Operador | `GET /trading/orders?status=review`, acciones de resolución |
+| A15 | `/tesoreria` | Depósitos y retiros: seguimiento y aprobación | Cliente | Operador | `GET /wallet/deposits`, `GET/PATCH /wallet/withdrawals` |
+| A16 | `/conciliacion` | Conciliación entre la cadena y el libro mayor | Cliente | Operador | `GET /wallet/reconciliation` |
+| A17 | `/reportes` | Reportes entre tenants | Cliente | Operador | `GET /reports/*` (rol de operadores, sección 6.4) |
+| A18 | `/auditoria` | Registro de quién consultó qué en Reportes | Cliente | Operador | `GET /reports/audit` |
+
+Las rutas de API de las secciones 3.10 a 3.12 son indicativas: siguen los prefijos de la sección 4 y se confirman con el contrato OpenAPI de cada servicio.
+
+### 3.13 Alcance para la demo de la hackathon
+
+No hace falta construir las 54 pantallas para la final. Este subconjunto cubre el recorrido completo de punta a punta:
+
+| App | Pantallas | Total |
+|---|---|---|
+| Clientes | C2 catálogo, C3 detalle, C4 registro, C5 ingreso, C7 verificación, C9 depositar, C11 comprar, C12 estado de la orden, C14 portafolio, C15 detalle de la posición | 10 |
+| Vendedores | V1 ingreso, V7 postular inmueble, V11 configurar oferta, V12 avance de la oferta | 4 |
+| Administración | A1 ingreso, A6 y A7 verificaciones, A9 revisión del inmueble, A11 emisión, A13 distribuciones | 6 |
+| **Total** | | **20** |
+
+### 3.14 Seguridad del front
+
+- **Encabezados de seguridad** en las tres apps (configuración de encabezados personalizados de Amplify o `next.config`): `Content-Security-Policy` que solo permite la API, Cognito, S3, el proveedor de KYC, Pollar y AgentCore; `Strict-Transport-Security`; `X-Frame-Options: DENY`; `Referrer-Policy`; `Permissions-Policy` (cámara solo donde la pide el flujo de KYC).
+- **Datos personales**: nada sensible en la URL, en `localStorage` ni en los logs del navegador. Los documentos se ven solo con URL prefirmadas de corta duración.
+- **Sesión**: cierre de sesión por inactividad en administración (por ejemplo, 15 minutos) y en vendedores.
+- **Dependencias**: actualizaciones automáticas (Dependabot o Renovate) y auditoría en el pipeline.
+- **Administración**: además de WAF por IP y MFA, confirmación explícita en acciones irreversibles (emitir tokens, aprobar distribuciones, aprobar retiros), con el detalle de lo que se va a ejecutar.
+
+### 3.15 Observabilidad del front
+
+- **CloudWatch RUM** en las tres apps: errores de JavaScript, rendimiento de carga y sesiones, sin capturar datos personales. Cobra por evento; con tráfico de MVP el costo es bajo.
+- El identificador de correlación de cada solicitud (sección 3.4) se muestra en los mensajes de error, así soporte encuentra la traza en X-Ray.
+- Métricas de producto clave: registros completados, KYC aprobados, depósitos, compras ejecutadas y abandonos en la compra.
+
+### 3.16 Ambientes, despliegue y pruebas
+
+| Tema | Propuesta |
+|---|---|
+| Ramas | `develop` → desarrollo, `staging` → staging, `main` → producción. Cada rama de Amplify con sus variables de entorno. |
+| Vistas previas | Amplify crea una URL de vista previa por pull request, apuntando a la API de desarrollo. |
+| Monorepo | Cada app de Amplify usa su `appRoot` (`apps/clientes`, etc.) y solo se reconstruye cuando cambia su carpeta o un paquete compartido. |
+| Infraestructura | Las apps de Amplify, sus dominios y sus WAF se definen en CDK (sección 11.3). |
+| Pruebas unitarias | Vitest y Testing Library en componentes y funcionalidades. |
+| Pruebas de punta a punta | Playwright contra staging: registro, KYC simulado, depósito, compra y portafolio. |
+| Accesibilidad | Revisión automática con axe en Playwright; contraste y navegación con teclado. |
+| Contrato | El pipeline regenera `api-client` desde OpenAPI y falla si el front usa una ruta que ya no existe. |
+
+### 3.17 Mapa de integraciones del front
+
+Qué usa cada app. Las líneas punteadas son procesos en segundo plano que ninguna pantalla llama directamente.
+
+```mermaid
+flowchart LR
+    subgraph APPS["Apps Next.js en Amplify Hosting"]
+        WEB["Clientes<br/>19 pantallas"]
+        SELL["Vendedores<br/>17 pantallas"]
+        ADMIN["Administración<br/>18 pantallas"]
+    end
+
+    COG["Amazon Cognito<br/>login, MFA, grupos"]
+    APIGW["API Gateway REST API + WAF"]
+
+    subgraph SVC["Servicios Lambda .NET"]
+        ADM["Admin<br/>/admin /tenants /kyc"]
+        INM["Inmuebles y Operación<br/>/properties"]
+        COM["Comercio e Inversión<br/>/trading"]
+        CAJ["Caja y Pagos<br/>/wallet"]
+        REP["Reportes<br/>/reports"]
+    end
+
+    TOK["Tokenization<br/>sin ruta pública"]
+    STL["Stellar"]
+    S3[("S3<br/>URL prefirmadas")]
+    ACR["AgentCore Runtime<br/>AI Concierge"]
+    KYC["Proveedor de KYC<br/>SDK o página alojada"]
+    POL["Pollar"]
+    EXP["Explorador de Stellar<br/>comprobantes"]
+
+    WEB --> COG
+    SELL --> COG
+    ADMIN --> COG
+    WEB -- JWT --> APIGW
+    SELL -- JWT --> APIGW
+    ADMIN -- JWT --> APIGW
+    APIGW --> ADM
+    APIGW --> INM
+    APIGW --> COM
+    APIGW --> CAJ
+    APIGW --> REP
+    WEB -- chat --> ACR
+    ACR -- solo lectura --> APIGW
+    WEB -- verificación --> KYC
+    SELL -- verificación --> KYC
+    WEB -. pago, si Pollar ofrece widget .-> POL
+    SELL -- documentos --> S3
+    ADMIN -- documentos --> S3
+    WEB -- descargas --> S3
+    WEB -- ver comprobante --> EXP
+    SELL -- ver comprobante --> EXP
+    COM -. saga de compra .-> TOK
+    CAJ -. rentas y retiros .-> TOK
+    TOK -. firma con KMS .-> STL
+```
+
+### 3.18 Servicios por pantalla
+
+Qué servicios usa cada pantalla. "En segundo plano" son procesos que la pantalla dispara pero no llama directamente (sagas, eventos, webhooks).
+
+**Clientes**
+
+| # | Pantalla | Servicios del backend | AWS y externos | En segundo plano |
+|---|---|---|---|---|
+| C1 | Inicio | Inmuebles y Operación | Amplify (ISR) | — |
+| C2 | Catálogo de activos | Inmuebles y Operación; Comercio e Inversión (ofertas y % recaudado) | Amplify (ISR) | — |
+| C3 | Detalle del activo | Inmuebles y Operación (datos, avalúo, documentos); Comercio e Inversión (oferta y avance) | S3 (documentos públicos) | — |
+| C4 | Registro | Admin (perfil del cliente) | Cognito | Disparador de Cognito hacia Admin |
+| C5 | Ingreso | — | Cognito | — |
+| C6 | Recuperar contraseña | — | Cognito | — |
+| C7 | Verificación de identidad | Admin (`/kyc`) | Proveedor de KYC; Cognito (`kyc_status`) | Webhook del proveedor hacia Admin |
+| C8 | Billetera | Caja y Pagos | — | — |
+| C9 | Cargar saldo | Caja y Pagos | Pollar | Webhook de Pollar hacia Caja y Pagos |
+| C10 | Retirar | Caja y Pagos | Pollar; Cognito (MFA) | Tokenization y KMS, si el retiro sale por Stellar |
+| C11 | Comprar fracciones | Comercio e Inversión (orden); Caja y Pagos (saldo) | — | Saga de Step Functions: Caja y Pagos reserva, Tokenization firma con KMS y envía a Stellar |
+| C12 | Estado de la orden | Comercio e Inversión | Explorador de Stellar | — |
+| C13 | Mis órdenes | Comercio e Inversión | — | — |
+| C14 | Portafolio | Reportes (modelo de lectura); Caja y Pagos (saldo) | DynamoDB (vía Reportes) | — |
+| C15 | Detalle de la posición y rentas | Reportes; Caja y Pagos (rentas pagadas) | Explorador de Stellar | — |
+| C16 | Mercado secundario | Comercio e Inversión | — | Saga de compra al aceptar una oferta |
+| C17 | Vender fracciones | Comercio e Inversión | — | Tokenization al ejecutarse la venta |
+| C18 | Estados de cuenta | Reportes | S3 (descarga) | — |
+| C19 | Cuenta y seguridad | Admin (perfil) | Cognito (MFA) | — |
+| — | Asistente de IA | Inmuebles y Operación, Comercio e Inversión, Reportes (solo lectura) | AgentCore Runtime, Gateway, Identity y Memory; Bedrock Guardrails | — |
+
+**Vendedores**
+
+| # | Pantalla | Servicios del backend | AWS y externos | En segundo plano |
+|---|---|---|---|---|
+| V1 | Ingreso | — | Cognito (MFA) | — |
+| V2 | Solicitud de registro | Admin | Cognito | — |
+| V3 | Configuración de MFA | — | Cognito | — |
+| V4 | Verificación de la empresa | Admin (`/kyc`) | Proveedor de KYC; S3 | Webhook del proveedor; escaneo de GuardDuty |
+| V5 | Resumen | Reportes | — | — |
+| V6 | Mis inmuebles | Inmuebles y Operación | — | — |
+| V7 | Postular inmueble | Inmuebles y Operación | S3 (fotos) | Escaneo de GuardDuty |
+| V8 | Detalle y estado de revisión | Inmuebles y Operación | — | — |
+| V9 | Documentos del inmueble | Inmuebles y Operación | S3 | Escaneo de GuardDuty |
+| V10 | Avalúos | Inmuebles y Operación | S3 (descarga) | — |
+| V11 | Configurar oferta | Comercio e Inversión; Inmuebles y Operación | — | — |
+| V12 | Avance de la oferta | Comercio e Inversión; Reportes | — | — |
+| V13 | Operación mensual | Inmuebles y Operación (cierres) | — | — |
+| V14 | Distribuciones de renta | Caja y Pagos | Explorador de Stellar | — |
+| V15 | Cobros y desembolsos | Caja y Pagos | Pollar | Tokenization, si el pago sale por Stellar |
+| V16 | Reportes | Reportes | S3 (descarga) | — |
+| V17 | Cuenta y empresa | Admin | Cognito | — |
+
+**Administración**
+
+| # | Pantalla | Servicios del backend | AWS y externos | En segundo plano |
+|---|---|---|---|---|
+| A1 | Ingreso | — | Cognito (MFA); WAF (IP) | — |
+| A2 | Resumen | Reportes | — | — |
+| A3 | Tenants | Admin | — | — |
+| A4 | Detalle del tenant | Admin | — | Aprovisionamiento por eventos |
+| A5 | Operadores y usuarios | Admin | Cognito (gestión desde el backend) | — |
+| A6 | Cola de verificaciones | Admin | — | — |
+| A7 | Detalle de la verificación | Admin | S3; proveedor de KYC | Admin actualiza `kyc_status` en Cognito |
+| A8 | Inmuebles | Inmuebles y Operación | — | — |
+| A9 | Revisión del inmueble | Inmuebles y Operación | S3 | — |
+| A10 | Avalúos | Inmuebles y Operación | S3 | — |
+| A11 | Aprobación de oferta y emisión | Comercio e Inversión | — | Tokenization emite el token con la cuenta emisora multifirma (KMS) |
+| A12 | Cierres mensuales | Inmuebles y Operación | — | — |
+| A13 | Distribuciones de renta | Caja y Pagos | — | Step Functions; Tokenization paga con la cuenta de distribución (KMS) |
+| A14 | Órdenes en revisión | Comercio e Inversión | Step Functions (historial, vía backend) | Compensaciones de la saga |
+| A15 | Tesorería | Caja y Pagos | Pollar | — |
+| A16 | Conciliación | Caja y Pagos | — | Tokenization lee Stellar Horizon cada minuto |
+| A17 | Reportes entre tenants | Reportes (rol de operadores) | DynamoDB; S3 y Athena | — |
+| A18 | Auditoría | Reportes | — | — |
+
+**Resumen por servicio**
+
+| Servicio | Clientes | Vendedores | Administración |
+|---|---|---|---|
+| Admin | Registro, KYC, cuenta | Registro, verificación, cuenta | Tenants, usuarios, verificaciones |
+| Inmuebles y Operación | Catálogo, detalle | Inmuebles, documentos, avalúos, operación | Revisión, avalúos, cierres |
+| Comercio e Inversión | Compra, órdenes, mercado | Oferta y su avance | Emisión, órdenes en revisión |
+| Caja y Pagos | Billetera, depósitos, retiros, rentas | Distribuciones, cobros | Distribuciones, tesorería, conciliación |
+| Reportes | Portafolio, estados de cuenta | Resumen, reportes | Resumen, reportes globales, auditoría |
+| Tokenization | Indirecto: compra, venta, retiro | Indirecto: cobros | Indirecto: emisión, distribuciones, conciliación |
+
+Ninguna pantalla llama directamente a Tokenization ni a Stellar: el front solo muestra resultados y comprobantes.
 
 ## 4. API y servicios
 
@@ -554,3 +911,10 @@ No incluye AgentCore ni el modelo de lenguaje, que se cobran por uso, ni dominio
 | P8 | ¿Quién custodia el firmante externo de la cuenta emisora? | Sección 8.2 |
 | P9 | ¿En qué región se despliega: us-east-1 o sa-east-1? Confirmar que AgentCore y los demás servicios estén disponibles en la región elegida. | Secciones 10 y 12 |
 | P10 | ¿GitHub Actions o CodePipeline para los despliegues? | Sección 11.3 |
+| P11 | ¿Monorepo para las tres apps Next.js o un repositorio por app? | Sección 3.2 |
+| P12 | ¿El autorizador de API Gateway valida el ID token o el access token con scopes? | Sección 3.3 |
+| P13 | ¿El catálogo público se sirve con rutas `GET` sin autorizador (con WAF y límites) o con SSR y una credencial de servicio? | Sección 3.4 |
+| P14 | ¿Qué versión de Next.js usar, según lo que soporte Amplify Hosting al momento de desplegar? | Sección 3.2 |
+| P15 | ¿El tenant se resuelve por dominio (marca propia por tenant) o solo por el JWT? | Sección 3.3 |
+| P16 | ¿El proveedor de KYC ofrece SDK web o página alojada? ¿Pollar ofrece un widget de pago o solo API? | Sección 3.6 |
+| P17 | ¿El navegador puede invocar AgentCore Runtime directamente con el JWT, o hace falta un intermediario en Next.js? | Sección 3.9 |

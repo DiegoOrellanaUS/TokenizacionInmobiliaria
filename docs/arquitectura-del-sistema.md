@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Estado | Borrador para revisión del equipo |
-| Versión | 2.2, 2026-11-18 |
+| Versión | 2.3, 2026-11-18 |
 | Parte de | Diagrama general "AWS Cloud" del equipo |
 | Documento relacionado | [metodos-de-valoracion-de-tokens-inmobiliarios.md](metodos-de-valoracion-de-tokens-inmobiliarios.md) (flujos de compra, cuentas de Stellar y cascada de distribución) |
 | Alcance | MVP. La sección 13 lista los cambios necesarios antes de operar con fondos reales de inversionistas. |
@@ -50,8 +50,9 @@ Esta tabla describe el diseño actual. La última columna indica qué lo reempla
 
 | Componente | Tecnología actual | Puerto | Responsabilidad | En el diseño propuesto |
 |---|---|---|---|---|
-| App de clientes | Next.js (Node.js) | | Explorar activos, detalle del activo, registro y KYC, cargar saldo, comprar fracciones, portafolio y detalle de renta, mercado secundario, panel de administración | Amplify Hosting, sin el panel de administración (sección 3) |
-| App de vendedores | Next.js (Node.js) | | Portal de vendedores | Amplify Hosting (sección 3) |
+| App de clientes | Next.js (Node.js) | | Explorar activos, detalle del activo, registro y KYC, cargar saldo, comprar fracciones, portafolio y detalle de renta, mercado secundario, panel de administración | Amplify Hosting, proyecto `apps/clientes`, puerto local **3001**. Sin el panel de administración e incluye el Agente Stellar (sección 3) |
+| App de vendedores | Next.js (Node.js) | | Portal de vendedores | Amplify Hosting, proyecto `apps/vendedores`, puerto local **3002** (sección 3) |
+| Backoffice | No existe; vive dentro de la app de clientes | | Panel de operadores | **Nuevo.** Amplify Hosting, proyecto `apps/backoffice`, puerto local **3003**, con MFA y restricción por IP (sección 3, O3) |
 | Gateway | .NET con YARP | 5000 | Punto de entrada único para las dos apps y para AgentCore | **Se elimina.** Lo reemplaza API Gateway REST API con WAF (sección 4) |
 | Global | .NET + worker + MongoDB | 8080 | Consultas a todas las bases de datos de los distintos tenants | **Se elimina.** Reportes asume su función con modelos de lectura (sección 6.4) |
 | Admin | .NET + worker + PostgreSQL | 8080 | Multitenencia, identidad, clientes, planes y aprovisionamiento | Lambda. La identidad pasa a Cognito; Admin conserva tenants, planes, aprovisionamiento y KYC (sección 5) |
@@ -60,7 +61,7 @@ Esta tabla describe el diseño actual. La última columna indica qué lo reempla
 | Caja y Pagos | .NET + PostgreSQL | 8083 | Depósitos, retiros, reservas de saldo, libro mayor y conciliación | Lambda; también recibe las distribuciones de renta |
 | Comercio e Inversión | .NET + PostgreSQL | 8084 | KYC, ofertas, órdenes, ejecuciones y distribuciones | Lambda; inicia la saga de compra en Step Functions |
 | Reportes | .NET + worker + MongoDB | 8085 | Contenido e información para generar reportes | Lambda con DynamoDB en lugar de MongoDB; absorbe a Global (sección 6.5) |
-| AI Concierge | Python + DynamoDB, en AgentCore | | Asistente de inversión | AgentCore Runtime, Gateway, Identity y Memory (sección 10) |
+| AI Concierge | Python + DynamoDB, en AgentCore | | Asistente de inversión | AgentCore Runtime, Gateway, Identity y Memory (sección 10). En el front es el Agente Stellar, paquete de la app de clientes (sección 3.9) |
 | Mensajería | SQS | | Eventos entre Tokenization, Inmuebles y Operación, Caja y Pagos, y Comercio e Inversión | EventBridge + SQS con outbox y DLQ (sección 7) |
 | Bases de datos | Una PostgreSQL por servicio; MongoDB en Global y Reportes | | | Una instancia RDS PostgreSQL, un esquema por servicio; DynamoDB para Reportes (sección 6) |
 

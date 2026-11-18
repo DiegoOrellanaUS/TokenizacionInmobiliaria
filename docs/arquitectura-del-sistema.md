@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Estado | Borrador para revisión del equipo |
-| Versión | 2.1, 2026-11-16 |
+| Versión | 2.2, 2026-11-18 |
 | Parte de | Diagrama general "AWS Cloud" del equipo |
 | Documento relacionado | [metodos-de-valoracion-de-tokens-inmobiliarios.md](metodos-de-valoracion-de-tokens-inmobiliarios.md) (flujos de compra, cuentas de Stellar y cascada de distribución) |
 | Alcance | MVP. La sección 13 lista los cambios necesarios antes de operar con fondos reales de inversionistas. |
@@ -24,7 +24,7 @@ El diseño propuesto:
 
 | Necesidad | Diseño actual | Diseño propuesto |
 |---|---|---|
-| Frontends | Next.js en contenedores Docker | **Amplify Hosting**, tres apps Next.js (clientes, vendedores, administración) en un monorepo, con WAF; 54 pantallas en total |
+| Frontends | Next.js en contenedores Docker | **Amplify Hosting**, tres apps Next.js separadas en un monorepo (clientes con el Agente Stellar, vendedores y backoffice), con WAF; 54 pantallas en total |
 | Entrada al backend | YARP en el puerto 5000 | **API Gateway REST API** con WAF |
 | Identidad y login | Construida dentro del servicio Admin | **Amazon Cognito**, con MFA y grupos por rol |
 | Servicios .NET | Contenedores en los puertos 8080 a 8085 | **AWS Lambda**, una función por servicio |
@@ -101,9 +101,9 @@ flowchart TB
     U["Inversionistas, vendedores y operadores"]
 
     subgraph FE["Amplify Hosting + WAF"]
-        WEB["Next.js clientes"]
+        WEB["Next.js clientes<br/>+ Agente Stellar"]
         SELL["Next.js vendedores"]
-        ADMIN["Next.js administración"]
+        ADMIN["Next.js backoffice"]
     end
 
     COG["Amazon Cognito<br/>login, MFA, roles"]
@@ -202,22 +202,22 @@ El sistema tiene tres aplicaciones Next.js, una por tipo de usuario. Cada una es
 
 ### 3.1 Las tres apps
 
-| App | Usuarios | Grupo de Cognito | Dominio sugerido | Rutas de API que usa | Pantallas | WAF |
-|---|---|---|---|---|---|---|
-| Next.js clientes | Inversionistas | `inversionistas` | `app.dominio` | `/properties/*` (lectura), `/kyc/*`, `/wallet/*`, `/trading/*`, `/reports/*` (solo datos propios) y AgentCore | 19 | Sí: reglas administradas de AWS y límite de tasa por IP |
-| Next.js vendedores | Vendedores de inmuebles | `vendedores` | `vendedores.dominio` | `/properties/*`, `/kyc/*` (verificación de la empresa), `/trading/*` (lectura de sus ofertas), `/wallet/*` (sus cobros), `/reports/*` (solo datos propios) | 17 | Opcional en el MVP (sección 12) |
-| Next.js administración | Operadores internos | `operadores` | `admin.dominio` | `/admin/*`, `/tenants/*` y las funciones de operador de los demás servicios | 18 | Sí: además, solo IPs de la oficina o de la VPN |
+| App | Usuarios | Grupo de Cognito | Dominio sugerido | Puerto local | Rutas de API que usa | Pantallas | WAF |
+|---|---|---|---|---|---|---|---|
+| Next.js clientes (incluye el Agente Stellar) | Inversionistas | `inversionistas` | `app.dominio` | 3001 | `/properties/*` (lectura), `/kyc/*`, `/wallet/*`, `/trading/*`, `/reports/*` (solo datos propios) y AgentCore | 19 | Sí: reglas administradas de AWS y límite de tasa por IP |
+| Next.js vendedores | Vendedores de inmuebles | `vendedores` | `vendedores.dominio` | 3002 | `/properties/*`, `/kyc/*` (verificación de la empresa), `/trading/*` (lectura de sus ofertas), `/wallet/*` (sus cobros), `/reports/*` (solo datos propios) | 17 | Opcional en el MVP (sección 12) |
+| Next.js backoffice | Operadores internos | `operadores` | `admin.dominio` | 3003 | `/admin/*`, `/tenants/*` y las funciones de operador de los demás servicios | 18 | Sí: además, solo IPs de la oficina o de la VPN |
 
-**Total: 54 pantallas.** Las secciones 3.10 a 3.12 las detallan, la 3.17 muestra el mapa de integraciones y la 3.18 los servicios que usa cada pantalla.
+**Total: 54 pantallas.** Las tres apps son proyectos separados, cada uno en su carpeta y con su propio despliegue (sección 3.2). El Agente Stellar no es una cuarta app: es un paquete que solo usa la app de clientes (sección 3.9). Los puertos locales aplican solo en desarrollo. Las secciones 3.10 a 3.12 detallan las pantallas, la 3.17 muestra el mapa de integraciones y la 3.18 los servicios que usa cada pantalla.
 
-La app de administración es **nueva**: sale de la app de clientes (O3). Además de la restricción por IP, exige MFA y un usuario en el grupo `operadores`, y llama a rutas propias de API Gateway (`/admin/*`). Las funciones de operador de otros servicios (aprobar distribuciones, revisar sagas, conciliar) revisan el grupo `operadores` en el JWT.
+El backoffice (la app de administración) es **nuevo**: sale de la app de clientes (O3). Además de la restricción por IP, exige MFA y un usuario en el grupo `operadores`, y llama a rutas propias de API Gateway (`/admin/*`). Las funciones de operador de otros servicios (aprobar distribuciones, revisar sagas, conciliar) revisan el grupo `operadores` en el JWT.
 
 ### 3.2 Stack y organización del código
 
 | Tema | Decisión | Motivo |
 |---|---|---|
 | Framework | Next.js con App Router y TypeScript, en una versión que soporte Amplify Hosting (**Por confirmar**, P14) | SSR, ISR y middleware soportados por Amplify |
-| Repositorio | **Monorepo** con pnpm workspaces y Turborepo: `apps/clientes`, `apps/vendedores`, `apps/admin` y paquetes compartidos (**Por confirmar**, P11) | Amplify soporta monorepos con una carpeta raíz por app (`appRoot`) |
+| Repositorio | **Monorepo** con pnpm workspaces y Turborepo: tres apps separadas (`apps/clientes`, `apps/vendedores`, `apps/backoffice`) y paquetes compartidos, entre ellos `agente-stellar` | Amplify soporta monorepos con una carpeta raíz por app (`appRoot`) |
 | Paquete `ui` | Tailwind CSS + shadcn/ui, con los tokens de diseño de la marca | Un solo sistema visual en las tres apps |
 | Paquete `api-client` | Tipos y cliente generados desde la definición OpenAPI de la REST API (`openapi-typescript` u otro generador) | Front y back comparten el contrato; un cambio en la API rompe la compilación, no la producción |
 | Paquete `auth` | Configuración de Amplify Auth, middleware y utilidades de grupos y claims | La misma lógica de sesión en las tres apps |
@@ -228,19 +228,129 @@ La app de administración es **nueva**: sale de la app de clientes (O3). Además
 | Idioma y formato | Español, montos con `Intl.NumberFormat` (USD y Bs), fechas en la zona `America/La_Paz` | Coherencia en montos y fechas de rentas |
 
 ```
-frontend/
+plataforma-frontend/
 ├── apps/
-│   ├── clientes/        app.dominio
-│   ├── vendedores/      vendedores.dominio
-│   └── admin/           admin.dominio
-└── packages/
-    ├── ui/              componentes y tokens de diseño
-    ├── api-client/      cliente y tipos generados desde OpenAPI
-    ├── auth/            Amplify Auth, middleware, grupos
-    └── config/          ESLint, TypeScript, Tailwind
+│   ├── clientes/             app.dominio · puerto local 3001 · incluye el Agente Stellar
+│   ├── vendedores/           vendedores.dominio · puerto local 3002
+│   └── backoffice/           admin.dominio · puerto local 3003
+├── packages/
+│   ├── agente-stellar/       asistente de IA (solo lo usa clientes)
+│   ├── ui/                   componentes y tokens de diseño
+│   ├── api-client/           cliente y tipos generados desde OpenAPI
+│   ├── auth/                 Amplify Auth, MFA, middleware por grupo
+│   ├── stellar/              formato de montos y enlaces al explorador
+│   └── config/               ESLint, TypeScript, Tailwind
+├── amplify.yml               build de las tres apps
+├── pnpm-workspace.yaml
+├── turbo.json
+└── package.json
 ```
 
-Dentro de cada app, el código se organiza por funcionalidad (`features/catalogo`, `features/compra`, `features/billetera`…). Las pantallas solo componen; la lógica de cada funcionalidad vive en su carpeta.
+Dentro de cada app, el código se organiza por funcionalidad (`features/catalogo`, `features/compra`, `features/billetera`…). Las pantallas solo componen; la lógica de cada funcionalidad vive en su carpeta. Cada paquete compartido se publica en el workspace como `@plataforma/<nombre>` y las apps lo declaran con `"workspace:*"` y en `transpilePackages` de `next.config.ts`.
+
+**`apps/clientes`** (C1 a C19 y el Agente Stellar)
+
+```
+apps/clientes/src/
+├── app/
+│   ├── (publico)/                  page.tsx C1 · activos/ C2 · activos/[id]/ C3
+│   ├── (auth)/                     registro/ C4 · ingresar/ C5 · recuperar/ C6
+│   └── (app)/                      solo grupo inversionistas
+│       ├── layout.tsx              navegación inferior + botón del Agente Stellar
+│       ├── verificacion/           C7
+│       ├── billetera/              C8 · depositar/ C9 · retirar/ C10
+│       ├── activos/[id]/comprar/   C11 (acepta datos precargados por el agente)
+│       ├── ordenes/                C13 · [id]/ C12
+│       ├── portafolio/             C14 · [activoId]/ C15
+│       ├── mercado/                C16 · vender/ C17
+│       ├── reportes/               C18
+│       ├── cuenta/                 C19
+│       └── asistente/              Agente Stellar a pantalla completa
+├── features/                       catalogo/ compra/ billetera/ portafolio/ mercado/
+├── middleware.ts                   sesión y grupo inversionistas en (app)
+└── next.config.ts
+```
+
+**`apps/vendedores`** (V1 a V17)
+
+```
+apps/vendedores/src/
+├── app/
+│   ├── (auth)/                     ingresar/ V1 · registro/ V2 · seguridad/ V3
+│   └── (portal)/                   solo grupo vendedores, con MFA
+│       ├── layout.tsx              menú lateral
+│       ├── page.tsx                V5
+│       ├── verificacion/           V4
+│       ├── inmuebles/              V6 · nuevo/ V7 · [id]/ V8
+│       │   └── [id]/               documentos/ V9 · avaluos/ V10 · oferta/ V11 · oferta/avance/ V12 · operacion/ V13 · distribuciones/ V14
+│       ├── cobros/                 V15
+│       ├── reportes/               V16
+│       └── cuenta/                 V17
+├── features/                       inmuebles/ oferta/ operacion/ cobros/
+└── middleware.ts                   grupo vendedores y MFA
+```
+
+**`apps/backoffice`** (A1 a A18)
+
+```
+apps/backoffice/src/
+├── app/
+│   ├── ingresar/                   A1
+│   └── (panel)/                    solo grupo operadores, MFA y WAF por IP
+│       ├── layout.tsx              menú lateral
+│       ├── page.tsx                A2
+│       ├── tenants/                A3 · [id]/ A4
+│       ├── usuarios/               A5
+│       ├── verificaciones/         A6 · [id]/ A7
+│       ├── inmuebles/              A8 · [id]/ A9 · [id]/avaluos/ A10 · [id]/emision/ A11
+│       ├── cierres/                A12
+│       ├── distribuciones/         A13
+│       ├── ordenes/                A14
+│       ├── tesoreria/              A15
+│       ├── conciliacion/           A16
+│       ├── reportes/               A17
+│       └── auditoria/              A18
+├── features/                       verificaciones/ inmuebles/ distribuciones/ tesoreria/
+└── middleware.ts                   grupo operadores y MFA
+```
+
+**`packages/agente-stellar`**
+
+```
+packages/agente-stellar/src/
+├── components/
+│   ├── BotonAsistente.tsx          botón flotante en las pantallas privadas
+│   ├── PanelChat.tsx               mensajes, sugerencias y campo de texto
+│   └── TarjetaAccion.tsx           lleva a la compra con datos precargados
+├── hooks/useAgente.ts              estado de la conversación y streaming
+├── lib/agentcore.ts                llamada a AgentCore Runtime con el token del usuario
+├── sugerencias.ts                  preguntas iniciales
+└── index.ts
+```
+
+**Desarrollo local y puertos**
+
+Cada app corre en su propio puerto en desarrollo. En Amplify no hay puertos: cada app se publica en su dominio.
+
+| App | Carpeta | Puerto local | URL local | Comando |
+|---|---|---|---|---|
+| Clientes (con el Agente Stellar) | `apps/clientes` | 3001 | `http://localhost:3001` | `pnpm --filter clientes dev` |
+| Vendedores | `apps/vendedores` | 3002 | `http://localhost:3002` | `pnpm --filter vendedores dev` |
+| Backoffice | `apps/backoffice` | 3003 | `http://localhost:3003` | `pnpm --filter backoffice dev` |
+
+```json
+// apps/clientes/package.json      (vendedores: 3002 · backoffice: 3003)
+"scripts": {
+  "dev": "next dev -p 3001",
+  "start": "next start -p 3001"
+}
+```
+
+`pnpm turbo dev` en la raíz levanta las tres apps a la vez. Para que el desarrollo local funcione:
+
+- El app client de Cognito de cada app incluye su URL local en las URL de retorno y de cierre de sesión (`http://localhost:3001`, `3002` y `3003`).
+- El CORS del API Gateway de desarrollo permite esos tres orígenes. En staging y producción solo se permiten los dominios reales.
+- Cada app tiene su `.env.local` con `NEXT_PUBLIC_API_URL`, el user pool y su app client de Cognito. El archivo no se sube al repositorio; se versiona un `.env.example`.
 
 ### 3.3 Autenticación y autorización
 
@@ -248,7 +358,7 @@ Dentro de cada app, el código se organiza por funcionalidad (`features/catalogo
 - **`@aws-amplify/adapter-nextjs`** guarda la sesión en cookies y permite leerla en el servidor. El **middleware de Next.js** revisa la sesión y el grupo antes de mostrar cualquier ruta privada:
   - clientes: rutas privadas solo para `inversionistas`;
   - vendedores: toda la app solo para `vendedores`;
-  - administración: toda la app solo para `operadores`.
+  - backoffice: toda la app solo para `operadores`.
 - **MFA**: obligatorio para vendedores y operadores desde el primer ingreso (configuración TOTP con `setUpTOTP` y `verifyTOTPSetup`). En clientes es opcional, pero la pantalla de retiro exige tenerlo activo (sección 5).
 - **Claims en la interfaz**: `tenant_id` y `kyc_status` llegan en el JWT (sección 5). La interfaz los usa para mostrar u ocultar acciones (por ejemplo, "Verifica tu identidad para invertir"). **La interfaz nunca decide permisos**: cada servicio los vuelve a revisar.
 - **Token hacia API Gateway**: el front envía en `Authorization` el token que espere el autorizador de Cognito: el ID token, o el access token si se configuran scopes (**Por confirmar**, P12). Amplify lo renueva solo antes de que expire.
@@ -287,7 +397,7 @@ En una etapa posterior, la consulta periódica se puede reemplazar por notificac
 
 ### 3.7 Archivos con URL prefirmadas
 
-Las apps de vendedores y de administración suben documentos (contratos, avalúos, fotos, documentos de la empresa) directo a S3 (sección 6.7):
+Las apps de vendedores y backoffice suben documentos (contratos, avalúos, fotos, documentos de la empresa) directo a S3 (sección 6.7):
 
 1. El front pide al servicio dueño una URL prefirmada para subir, indicando tipo y tamaño del archivo.
 2. El navegador sube el archivo con `PUT` directo a S3. El archivo no pasa por Lambda ni por API Gateway.
@@ -306,14 +416,17 @@ Requisitos: CORS en los buckets solo para los dominios de las apps, límite de t
 | Privadas de las tres apps | Middleware en el servidor para la sesión y el grupo; datos en el cliente con TanStack Query | Datos personales que cambian seguido y no necesitan SEO |
 | Formularios (registro, compra, postulación) | Componentes de cliente | Interacción y validación inmediata |
 
-Las apps de vendedores y de administración no necesitan SEO. Sus pantallas se marcan `noindex`.
+Las apps de vendedores y backoffice no necesitan SEO. Sus pantallas se marcan `noindex`.
 
-### 3.9 AI Concierge en la app de clientes
+### 3.9 Agente Stellar (asistente de IA) en la app de clientes
 
-- El asistente es un **componente de chat** disponible en las pantallas privadas de clientes, no una pantalla aparte.
-- El front invoca AgentCore Runtime con el JWT del inversionista (sección 10) y muestra la respuesta a medida que llega. Si el navegador no puede invocar AgentCore directamente, una ruta de Next.js hace de intermediario sin guardar el token (**Por confirmar**, P17).
-- Si el asistente sugiere una compra, el chat muestra un botón que lleva a la pantalla de compra con los datos precargados. El inversionista confirma ahí y la orden sigue la saga normal. Ninguna acción del chat mueve dinero.
-- El chat avisa que las proyecciones son estimaciones y no muestra datos de otros usuarios.
+El Agente Stellar es la guía de inversión del cliente: lo ayuda a decidir en qué inmueble invertir y cuánto comprar. En el front es el paquete `packages/agente-stellar`, que solo importa la app de clientes. Así comparte la sesión del inversionista y puede llevarlo directo a la compra. En el backend es el AI Concierge en AgentCore (sección 10).
+
+- **Dónde aparece:** un botón flotante en todas las pantallas privadas de clientes (desde `(app)/layout.tsx`) y la ruta `/asistente`, que muestra el chat a pantalla completa.
+- **Qué hace:** sugiere inmuebles según el monto y las preguntas del usuario, explica la renta, los riesgos y cómo funciona una fracción, simula cuánto cobraría y compara activos.
+- **Qué no hace:** no compra ni mueve dinero. Cuando recomienda, muestra una tarjeta de acción que abre la pantalla de compra (C11) con los datos precargados; el inversionista confirma ahí y la orden sigue la saga normal.
+- **Qué datos ve:** solo los del propio usuario. El front invoca AgentCore Runtime con el JWT del inversionista y AgentCore Gateway expone solo herramientas de lectura. Si el navegador no puede invocar AgentCore directamente, el intermediario debe ser una Lambda con streaming de respuestas, porque Amplify no soporta el streaming de Next.js (**Por confirmar**, P17).
+- **Avisos:** el chat indica que las proyecciones son estimaciones y que los cálculos (NAV, rendimientos) los hace el backend, no el modelo.
 
 ### 3.10 Pantallas de la app de clientes (19)
 
@@ -338,7 +451,7 @@ Las apps de vendedores y de administración no necesitan SEO. Sus pantallas se m
 | C17 | `/mercado/vender` | Publicar oferta de venta de fracciones | Cliente | Inversionista con KYC | `POST /trading/offers` (con llave de idempotencia) |
 | C18 | `/reportes` | Estados de cuenta y certificados descargables | Cliente | Inversionista | `GET /reports/statements`, URL prefirmada de lectura de S3 |
 | C19 | `/cuenta` | Perfil, seguridad (MFA) y preferencias | Cliente | Inversionista | `GET/PUT /kyc/profile`, Cognito `setUpTOTP`, `updateMFAPreference` |
-| — | Componente | AI Concierge | Cliente | Inversionista | AgentCore Runtime (sección 3.9) |
+| — | `/asistente` y botón flotante | Agente Stellar: guía de inversión con IA | Cliente | Inversionista | AgentCore Runtime (sección 3.9) |
 
 ### 3.11 Pantallas de la app de vendedores (17)
 
@@ -362,7 +475,7 @@ Las apps de vendedores y de administración no necesitan SEO. Sus pantallas se m
 | V16 | `/reportes` | Reportes descargables | Cliente | Vendedor | `GET /reports/*` (propios), URL prefirmada de lectura de S3 |
 | V17 | `/cuenta` | Perfil de la empresa, usuarios y seguridad | Cliente | Vendedor | `GET/PUT /kyc/sellers/me`, Cognito |
 
-### 3.12 Pantallas de la app de administración (18)
+### 3.12 Pantallas del backoffice (18)
 
 | # | Ruta | Pantalla | Render | Acceso | Integraciones |
 |---|---|---|---|---|---|
@@ -395,14 +508,14 @@ No hace falta construir las 54 pantallas para la final. Este subconjunto cubre e
 |---|---|---|
 | Clientes | C2 catálogo, C3 detalle, C4 registro, C5 ingreso, C7 verificación, C9 depositar, C11 comprar, C12 estado de la orden, C14 portafolio, C15 detalle de la posición | 10 |
 | Vendedores | V1 ingreso, V7 postular inmueble, V11 configurar oferta, V12 avance de la oferta | 4 |
-| Administración | A1 ingreso, A6 y A7 verificaciones, A9 revisión del inmueble, A11 emisión, A13 distribuciones | 6 |
+| Backoffice | A1 ingreso, A6 y A7 verificaciones, A9 revisión del inmueble, A11 emisión, A13 distribuciones | 6 |
 | **Total** | | **20** |
 
 ### 3.14 Seguridad del front
 
 - **Encabezados de seguridad** en las tres apps (configuración de encabezados personalizados de Amplify o `next.config`): `Content-Security-Policy` que solo permite la API, Cognito, S3, el proveedor de KYC, Pollar y AgentCore; `Strict-Transport-Security`; `X-Frame-Options: DENY`; `Referrer-Policy`; `Permissions-Policy` (cámara solo donde la pide el flujo de KYC).
 - **Datos personales**: nada sensible en la URL, en `localStorage` ni en los logs del navegador. Los documentos se ven solo con URL prefirmadas de corta duración.
-- **Sesión**: cierre de sesión por inactividad en administración (por ejemplo, 15 minutos) y en vendedores.
+- **Sesión**: cierre de sesión por inactividad en el backoffice (por ejemplo, 15 minutos) y en vendedores.
 - **Dependencias**: actualizaciones automáticas (Dependabot o Renovate) y auditoría en el pipeline.
 - **Administración**: además de WAF por IP y MFA, confirmación explícita en acciones irreversibles (emitir tokens, aprobar distribuciones, aprobar retiros), con el detalle de lo que se va a ejecutar.
 
@@ -418,7 +531,8 @@ No hace falta construir las 54 pantallas para la final. Este subconjunto cubre e
 |---|---|
 | Ramas | `develop` → desarrollo, `staging` → staging, `main` → producción. Cada rama de Amplify con sus variables de entorno. |
 | Vistas previas | Amplify crea una URL de vista previa por pull request, apuntando a la API de desarrollo. |
-| Monorepo | Cada app de Amplify usa su `appRoot` (`apps/clientes`, etc.) y solo se reconstruye cuando cambia su carpeta o un paquete compartido. |
+| Monorepo | Cada app de Amplify usa su `appRoot` (`apps/clientes`, `apps/vendedores`, `apps/backoffice`) y solo se reconstruye cuando cambia su carpeta o un paquete compartido. |
+| Desarrollo local | Clientes en el puerto 3001, vendedores en el 3002 y backoffice en el 3003 (sección 3.2). `pnpm turbo dev` levanta las tres. |
 | Infraestructura | Las apps de Amplify, sus dominios y sus WAF se definen en CDK (sección 11.3). |
 | Pruebas unitarias | Vitest y Testing Library en componentes y funcionalidades. |
 | Pruebas de punta a punta | Playwright contra staging: registro, KYC simulado, depósito, compra y portafolio. |
@@ -432,9 +546,9 @@ Qué usa cada app. Las líneas punteadas son procesos en segundo plano que ningu
 ```mermaid
 flowchart LR
     subgraph APPS["Apps Next.js en Amplify Hosting"]
-        WEB["Clientes<br/>19 pantallas"]
-        SELL["Vendedores<br/>17 pantallas"]
-        ADMIN["Administración<br/>18 pantallas"]
+        WEB["Clientes + Agente Stellar<br/>19 pantallas · :3001"]
+        SELL["Vendedores<br/>17 pantallas · :3002"]
+        ADMIN["Backoffice<br/>18 pantallas · :3003"]
     end
 
     COG["Amazon Cognito<br/>login, MFA, grupos"]
@@ -451,7 +565,7 @@ flowchart LR
     TOK["Tokenization<br/>sin ruta pública"]
     STL["Stellar"]
     S3[("S3<br/>URL prefirmadas")]
-    ACR["AgentCore Runtime<br/>AI Concierge"]
+    ACR["AgentCore Runtime<br/>Agente Stellar"]
     KYC["Proveedor de KYC<br/>SDK o página alojada"]
     POL["Pollar"]
     EXP["Explorador de Stellar<br/>comprobantes"]
@@ -509,7 +623,7 @@ Qué servicios usa cada pantalla. "En segundo plano" son procesos que la pantall
 | C17 | Vender fracciones | Comercio e Inversión | — | Tokenization al ejecutarse la venta |
 | C18 | Estados de cuenta | Reportes | S3 (descarga) | — |
 | C19 | Cuenta y seguridad | Admin (perfil) | Cognito (MFA) | — |
-| — | Asistente de IA | Inmuebles y Operación, Comercio e Inversión, Reportes (solo lectura) | AgentCore Runtime, Gateway, Identity y Memory; Bedrock Guardrails | — |
+| — | Agente Stellar | Inmuebles y Operación, Comercio e Inversión, Reportes (solo lectura) | AgentCore Runtime, Gateway, Identity y Memory; Bedrock Guardrails | — |
 
 **Vendedores**
 
@@ -533,7 +647,7 @@ Qué servicios usa cada pantalla. "En segundo plano" son procesos que la pantall
 | V16 | Reportes | Reportes | S3 (descarga) | — |
 | V17 | Cuenta y empresa | Admin | Cognito | — |
 
-**Administración**
+**Backoffice**
 
 | # | Pantalla | Servicios del backend | AWS y externos | En segundo plano |
 |---|---|---|---|---|
@@ -558,7 +672,7 @@ Qué servicios usa cada pantalla. "En segundo plano" son procesos que la pantall
 
 **Resumen por servicio**
 
-| Servicio | Clientes | Vendedores | Administración |
+| Servicio | Clientes | Vendedores | Backoffice |
 |---|---|---|---|
 | Admin | Registro, KYC, cuenta | Registro, verificación, cuenta | Tenants, usuarios, verificaciones |
 | Inmuebles y Operación | Catálogo, detalle | Inmuebles, documentos, avalúos, operación | Revisión, avalúos, cierres |
@@ -789,7 +903,7 @@ Horizon no envía webhooks; el sistema lo lee.
 
 El streaming de Horizon necesita una conexión abierta que Lambda no sostiene. Si un minuto de retraso no alcanza, se evalúa un proveedor de indexación de Stellar (**Por confirmar**, sección 14).
 
-## 10. AI Concierge en AgentCore
+## 10. AI Concierge (Agente Stellar) en AgentCore
 
 | Pieza | Uso |
 |---|---|
@@ -866,7 +980,7 @@ Precios aproximados de us-east-1, con tráfico bajo. La columna "Mínimo" omite 
 | Componente | Mínimo | Recomendado | Notas |
 |---|---|---|---|
 | Amplify Hosting (3 apps) | $5 | $15 | Compilación, almacenamiento, datos servidos y SSR. Tiene capa gratuita. |
-| WAF en Amplify | $15 | $30 | $15 por app: clientes y administración; vendedores opcional |
+| WAF en Amplify | $15 | $30 | $15 por app: clientes y backoffice; vendedores opcional |
 | API Gateway REST API | $1 | $5 | ~$3.50 por millón de solicitudes |
 | WAF (reglas y solicitudes) | $10 | $15 | Dos web ACL: una global para Amplify y una regional para las APIs |
 | Cognito | $0 | $0 | Plan Essentials, hasta 10,000 usuarios activos al mes |
@@ -911,7 +1025,7 @@ No incluye AgentCore ni el modelo de lenguaje, que se cobran por uso, ni dominio
 | P8 | ¿Quién custodia el firmante externo de la cuenta emisora? | Sección 8.2 |
 | P9 | ¿En qué región se despliega: us-east-1 o sa-east-1? Confirmar que AgentCore y los demás servicios estén disponibles en la región elegida. | Secciones 10 y 12 |
 | P10 | ¿GitHub Actions o CodePipeline para los despliegues? | Sección 11.3 |
-| P11 | ¿Monorepo para las tres apps Next.js o un repositorio por app? | Sección 3.2 |
+| P11 | ¿Monorepo para las tres apps Next.js o un repositorio por app? **Resuelta:** monorepo con tres apps separadas y el Agente Stellar como paquete de clientes. | Sección 3.2 |
 | P12 | ¿El autorizador de API Gateway valida el ID token o el access token con scopes? | Sección 3.3 |
 | P13 | ¿El catálogo público se sirve con rutas `GET` sin autorizador (con WAF y límites) o con SSR y una credencial de servicio? | Sección 3.4 |
 | P14 | ¿Qué versión de Next.js usar, según lo que soporte Amplify Hosting al momento de desplegar? | Sección 3.2 |

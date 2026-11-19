@@ -1,17 +1,17 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Adminstracion.Dominio.Catalogo
+namespace Adminstracion.Data.Legado.Catalogo
 {
-    [Table("cliente", Schema = "admin")]
-    public class Cliente
+    [Table("capacidad", Schema = "admin")]
+    public class Capacidad
     {
         [Key]
-        public Guid id { get; set; }
-
         public string codigo { get; set; } = null!;
 
-        public string razon_social { get; set; } = null!;
+        public string? descripcion { get; set; }
+
+        public string nombre_visible { get; set; } = null!;
 
         public string estado { get; set; } = null!;
     }

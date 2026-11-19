@@ -31,5 +31,31 @@ public class ExpedientesContext(DbContextOptions<ExpedientesContext> options) : 
         }
     }
 
+    public static async Task EliminarTenantAsync(Guid tenantId, IConfiguration configuration, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty)
+            throw new ArgumentException("Tenant inválido.", nameof(tenantId));
+
+        var connection = configuration.GetConnectionString("ExpedientesContext")
+            ?? throw new InvalidOperationException("Falta la conexión de Expedientes.");
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder(connection)
+        {
+            Database = $"archivos_expedientes_{tenantId:N}"
+        };
+        var options = new DbContextOptionsBuilder<ExpedientesContext>()
+            .UseNpgsql(builder.ConnectionString).Options;
+
+        await creationLock.WaitAsync(ct);
+        try
+        {
+            await using var context = new ExpedientesContext(options);
+            await context.Database.EnsureDeletedAsync(ct);
+        }
+        finally
+        {
+            creationLock.Release();
+        }
+    }
+
 
 }

@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Adminstracion.Dominio.Catalogo
+namespace Adminstracion.Data.Legado.Catalogo
 {
     [Table("servicio", Schema = "admin")]
     public class Servicio

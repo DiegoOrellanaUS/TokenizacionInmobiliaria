@@ -32,12 +32,13 @@ public class ArchivosContext(DbContextOptions<ArchivosContext> options) : DbCont
     }
 
     public static async Task EliminarTenantAsync(
-    Guid tenantId, IConfiguration configuration, CancellationToken ct)
+        Guid tenantId, IConfiguration configuration, CancellationToken ct)
     {
         if (tenantId == Guid.Empty)
             throw new ArgumentException("Tenant inválido.", nameof(tenantId));
 
-        var connection = configuration.GetConnectionString("ArchivosMultitenenciaContext");
+        var connection = configuration.GetConnectionString("ArchivosMultitenenciaContext")
+            ?? throw new InvalidOperationException("Falta la conexión de Archivos.");
         var builder = new Npgsql.NpgsqlConnectionStringBuilder(connection)
         {
             Database = $"archivos_archivo_{tenantId:N}"

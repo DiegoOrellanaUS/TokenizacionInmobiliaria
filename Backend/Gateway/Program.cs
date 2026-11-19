@@ -9,6 +9,19 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api/Administrador/BorrarBases") &&
+        (!app.Environment.IsDevelopment() ||
+         context.Connection.RemoteIpAddress is not System.Net.IPAddress remoto || !System.Net.IPAddress.IsLoopback(remoto)))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next(context);
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.MapScalarApiReference(options =>

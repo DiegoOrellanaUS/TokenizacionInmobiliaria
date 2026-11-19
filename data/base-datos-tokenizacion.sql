@@ -41,6 +41,9 @@ BEGIN
         CREATE TABLE "admin"."usuario" (
             "id" uuid NOT NULL,
             "sujeto_oidc" text NOT NULL UNIQUE,
+            "ci" text UNIQUE,
+            "correo_electronico" text UNIQUE,
+            "contrasenia_hash" text,
             "nombre" text NOT NULL,
             "estado" text NOT NULL,
             PRIMARY KEY ("id"),

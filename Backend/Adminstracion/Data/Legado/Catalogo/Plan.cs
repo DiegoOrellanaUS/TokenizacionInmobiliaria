@@ -1,17 +1,19 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Adminstracion.Dominio.Catalogo
+namespace Adminstracion.Data.Legado.Catalogo
 {
-    [Table("usuario", Schema = "admin")]
-    public class Usuario
+    [Table("plan", Schema = "admin")]
+    public class Plan
     {
         [Key]
         public Guid id { get; set; }
 
-        public string sujeto_oidc { get; set; } = null!;
+        public string codigo { get; set; } = null!;
 
         public string nombre { get; set; } = null!;
+
+        public string? descripcion { get; set; }
 
         public string estado { get; set; } = null!;
     }

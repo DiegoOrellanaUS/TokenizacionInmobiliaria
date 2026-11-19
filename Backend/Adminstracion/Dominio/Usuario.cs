@@ -1,20 +1,17 @@
-using Microsoft.EntityFrameworkCore;
-using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
-namespace Adminstracion.Dominio
+namespace Adminstracion.Dominio;
+
+public class Usuario
 {
-    [Index(nameof(TenantId), IsUnique = true)]
-    public class Usuario
-    {
-        [Key]
-        public int UsuarioId { get; set; }
-        public string CI { get; set; }
-        public string Nombre { get; set; }
-        public string CorreoElectronico { get; set; }
-        public string Contrasenia { get; set; }
-        public string Estado { get; set; }
-        public Guid TenantId { get; set; }
-        public string EstadoBaseDatos { get; set; } = "Pendiente";
-        public List<Subscripcion> Subscripciones { get; set; }
-    }
+    public Guid id { get; set; }
+    public required string nombres { get; set; }
+    public required string apellidos { get; set; }
+    public string? ci { get; set; }
+    public string? correo_electronico { get; set; }
+    public string? emisor_oidc { get; set; }
+    public string? sujeto_oidc { get; set; }
+    [JsonIgnore]
+    public string? contrasenia_hash { get; set; }
+    public string estado { get; set; } = "ACTIVO";
 }

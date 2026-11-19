@@ -102,7 +102,7 @@ classes: {
 }
 
 admin: "Admin | Identidad, clientes, planes y aprovisionamiento" {
-  Usuario: {class: tabla; id: uuid {constraint: primary_key}; sujeto_oidc: text {constraint: unique}; nombre: text; estado: text}
+  Usuario: {class: tabla; id: uuid {constraint: primary_key}; sujeto_oidc: text {constraint: unique}; nombre: text; ci: text {constraint: unique}; correo_electronico: text {constraint: unique}; contrasenia_hash: text; estado: text}
   Cliente: {class: tabla; id: uuid {constraint: primary_key}; codigo: text {constraint: unique}; razon_social: text; estado: text}
   Rol: {class: tabla; id: uuid {constraint: primary_key}; codigo: text {constraint: unique}; nombre_visible: text; descripcion: text; orden_visual: int; estado: text}
   Membresia: {class: tabla; id: uuid {constraint: primary_key}; cliente_id: uuid {constraint: foreign_key}; usuario_id: uuid {constraint: foreign_key}; estado: text; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}

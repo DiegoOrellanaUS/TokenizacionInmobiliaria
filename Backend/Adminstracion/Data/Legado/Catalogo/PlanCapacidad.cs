@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace Adminstracion.Dominio.Catalogo
+namespace Adminstracion.Data.Legado.Catalogo
 {
     [Table("plan_capacidad", Schema = "admin")]
     [PrimaryKey(nameof(plan_id), nameof(plan_version), nameof(capacidad_codigo))]

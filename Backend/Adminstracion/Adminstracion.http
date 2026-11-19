@@ -1,6 +1,45 @@
-@Adminstracion_HostAddress = http://localhost:5057
+@Host = https://localhost:7266
+@UsuarioId = 00000000-0000-0000-0000-000000000000
+@ReferenciaPago = piloto-001
 
-GET {{Adminstracion_HostAddress}}/weatherforecast/
-Accept: application/json
+### Registrar usuario. Copiar usuarioId de la respuesta en la variable de arriba.
+POST {{Host}}/api/Usuarios/crear
+Content-Type: application/json
 
-###
+{
+  "ci": "DEMO-001",
+  "nombre": "Usuario",
+  "apellidos": "Piloto",
+  "correoElectronico": "piloto@example.test",
+  "contrasenia": "Cambiar-Piloto-001"
+}
+
+### Crear un plan base.
+POST {{Host}}/api/Planes/crear
+Content-Type: application/json
+
+{
+  "codigo": "PILOTO",
+  "nombre": "Piloto mensual",
+  "precio": 900,
+  "moneda": "BOB",
+  "periodicidad": "MENSUAL",
+  "maxTokensPropios": 10,
+  "maxTokensComoCliente": 50
+}
+
+### Confirmar un pago simulado. Repetir la misma referencia si falta crear una base.
+POST {{Host}}/api/Subscripciones/crear
+Content-Type: application/json
+
+{
+  "codigoPlan": "PILOTO",
+  "usuarioId": "{{UsuarioId}}",
+  "referenciaPago": "{{ReferenciaPago}}"
+}
+
+### Consultar el tenant del usuario
+GET {{Host}}/api/Usuarios/Buscar/{{UsuarioId}}
+
+### Listar usuarios existentes, incluidos los inactivos.
+GET {{Host}}/api/Usuarios/ListarReal

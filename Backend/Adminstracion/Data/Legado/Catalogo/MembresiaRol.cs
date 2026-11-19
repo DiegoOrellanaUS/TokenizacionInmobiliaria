@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace Adminstracion.Dominio.Catalogo
+namespace Adminstracion.Data.Legado.Catalogo
 {
     [Table("membresia_rol", Schema = "admin")]
     [PrimaryKey(nameof(membresia_id), nameof(rol_id), nameof(fecha_creacion))]

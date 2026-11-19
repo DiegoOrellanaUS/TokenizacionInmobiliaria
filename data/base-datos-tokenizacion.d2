@@ -1,10 +1,11 @@
 # Tokenización inmobiliaria | PostgreSQL | Modelo por microservicio
 #
-# Admin mantiene el catálogo global de clientes, planes y silos.
+# Admin mantiene usuarios, tenants, roles, planes, suscripciones y el estado de los silos.
 # Operación, Caja, Comercio, Tokenización y Reportes tienen una base por cliente.
 # Global tiene una base central de lectura. Los cierres oficiales viven en Operación.
 # Las flechas representan FK locales. Los campos _ref identifican registros
-# externos y se interpretan dentro del contexto del cliente autorizado.
+# externos y se interpretan dentro del contexto del tenant autorizado.
+# Las proyecciones con cliente_ref conservan su nombre y referencian el ID del tenant.
 #
 # 0FN | Cliente + {usuarios, planes, silos, inmuebles, contratos, documentos,
 #        cobros, gastos, cierres, pagos, ofertas, órdenes, tokens y reportes}.
@@ -13,10 +14,9 @@
 # 2FN | En Titularidad, la cuota depende de toda la clave. Los nombres viven
 #        en Inmueble y Parte. En los totales, la cifra depende de todo su alcance.
 # 3FN | Separar Categoria, Plan y Rol. Los nombres se consultan por sus claves.
-# FNBC | En (cliente, servicio, plantilla), si plantilla determina servicio y
-#        hay una elección por cliente y servicio, plantilla no es superclave.
-#        SiloServicio guarda (cliente, servicio). La plantilla de aprovisionamiento
-#        se define en la configuración del servicio dueño.
+# FNBC | Evaluar las dependencias funcionales de las claves compuestas.
+# Admin conserva el catálogo comercial en plan y registra en JSONB una copia
+# de las condiciones contratadas y el estado de los silos por servicio.
 # 4FN | Un inmueble tiene titulares y documentos independientes. Separarlos en
 #        Titularidad e InmuebleDocumento. Aplicar igual criterio a roles y permisos.
 # 5FN | CierreEvidencia conserva el hecho completo: versión del cierre,
@@ -46,20 +46,20 @@
 #
 # En las migraciones, declarar UNIQUE para claves naturales y restricciones:
 # (inmueble_id, codigo) en Unidad, (inmueble_id, mes, moneda) en Cierre,
-# (proveedor, referencia_externa) en cobros, (red, direccion) y (red, hash).
+# (proveedor_pago, referencia_pago) en suscripcion, (red, direccion) y (red, hash).
 # Las flechas etiquetadas con varios campos son FK compuestas.
 # Los punteros vigentes son opcionales hasta publicar la primera versión.
 # Los logs técnicos pertenecen a observabilidad. Gerencia se modela con permisos.
 
 # BAJA LÓGICA Y VIGENCIA
-# Entidades: estado obligatorio. Catálogos simples usan ACTIVO, INACTIVO y
-# ELIMINADO. Reutilizar el estado existente en flujos y proteger estados terminales.
+# Entidades de Admin: estado obligatorio. Los catálogos usan ACTIVO, INACTIVO y
+# Borrado. Los listados también reconocen ELIMINADO de datos anteriores.
 # Relaciones: fecha_creacion NOT NULL DEFAULT now() y fecha_eliminacion NULL.
 # Validar que fecha_eliminacion sea nula o >= fecha_creacion. Una relación vigente
 # además respeta su estado de negocio o sus fechas desde/hasta cuando las tenga.
-# Solo Membresia y SiloServicio usan estado en las relaciones por su ciclo propio.
-# Membresia: UNIQUE parcial en (cliente_id, usuario_id) cuando fecha_eliminacion
-# es nula. El retiro de una membresía cierra sus roles en la misma transacción.
+# usuario_rol: UNIQUE parcial en (usuario_id, rol_id, tenant_id, token_ref)
+# cuando fecha_eliminacion es nula. Retirar un rol fecha la relación.
+# El vencimiento o cambio de plan conserva el tenant y las bases privadas.
 # Cuando fecha_creacion participa en la PK, crear UNIQUE parcial sobre el resto
 # de la clave para impedir dos vínculos activos del mismo tipo.
 # CierreEvidencia referencia la ocurrencia exacta de MovimientoDocumento.
@@ -101,35 +101,103 @@ classes: {
   }
 }
 
-admin: "Admin | Identidad, clientes, planes y aprovisionamiento" {
-  Usuario: {class: tabla; id: uuid {constraint: primary_key}; sujeto_oidc: text {constraint: unique}; nombre: text; ci: text {constraint: unique}; correo_electronico: text {constraint: unique}; contrasenia_hash: text; estado: text}
-  Cliente: {class: tabla; id: uuid {constraint: primary_key}; codigo: text {constraint: unique}; razon_social: text; estado: text}
-  Rol: {class: tabla; id: uuid {constraint: primary_key}; codigo: text {constraint: unique}; nombre_visible: text; descripcion: text; orden_visual: int; estado: text}
-  Membresia: {class: tabla; id: uuid {constraint: primary_key}; cliente_id: uuid {constraint: foreign_key}; usuario_id: uuid {constraint: foreign_key}; estado: text; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}
-  MembresiaRol: {class: tabla; membresia_id: uuid {constraint: [primary_key; foreign_key]}; rol_id: uuid {constraint: [primary_key; foreign_key]}; fecha_creacion: timestamptz {constraint: primary_key}; fecha_eliminacion: timestamptz}
-  Plan: {class: tabla; id: uuid {constraint: primary_key}; codigo: text {constraint: unique}; nombre: text; descripcion: text; estado: text}
-  PlanVersion: {class: tabla; plan_id: uuid {constraint: [primary_key; foreign_key]}; version: int {constraint: primary_key}; precio: numeric; moneda: "varchar(12)"; periodicidad: text}
-  Capacidad: {class: tabla; codigo: text {constraint: primary_key}; descripcion: text; nombre_visible: text; estado: text}
-  PlanCapacidad: {class: tabla; plan_id: uuid {constraint: [primary_key; foreign_key]}; plan_version: int {constraint: [primary_key; foreign_key]}; capacidad_codigo: text {constraint: [primary_key; foreign_key]}; limite: int; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}
-  Suscripcion: {class: tabla; id: uuid {constraint: primary_key}; cliente_id: uuid {constraint: foreign_key}; plan_id: uuid {constraint: foreign_key}; plan_version: int {constraint: foreign_key}; estado: text; desde: timestamptz; hasta: timestamptz}
-  CobroSuscripcion: {class: tabla; id: uuid {constraint: primary_key}; suscripcion_id: uuid {constraint: foreign_key}; proveedor: text; referencia_externa: text; importe: numeric; moneda: "varchar(12)"; estado: text; confirmado_en: timestamptz}
-  Servicio: {class: tabla; codigo: text {constraint: primary_key}; nombre: text; estado: text}
-  SiloServicio: {class: tabla; cliente_id: uuid {constraint: [primary_key; foreign_key]}; servicio_codigo: text {constraint: [primary_key; foreign_key]}; localizador_bd: text; secreto_ref: text; estado: text; version_esquema: text; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}
-  Aprovisionamiento: {class: tabla; id: uuid {constraint: primary_key}; cliente_id: uuid {constraint: foreign_key}; servicio_codigo: text {constraint: foreign_key}; idempotencia: text {constraint: unique}; operacion: text; estado: text; iniciado_en: timestamptz; finalizado_en: timestamptz}
+admin: "Admin | Usuarios, roles, planes y multitenencia" {
+  usuario: {
+    class: tabla
+    id: uuid {constraint: primary_key}
+    nombres: text
+    apellidos: text
+    ci: "text NULL" {constraint: unique}
+    correo_electronico: "text NULL" {constraint: unique}
+    emisor_oidc: "text NULL"
+    sujeto_oidc: "text NULL"
+    contrasenia_hash: "text NULL"
+    estado: text
+  }
 
-  Membresia.cliente_id -> Cliente.id
-  Membresia.usuario_id -> Usuario.id
-  MembresiaRol.membresia_id -> Membresia.id
-  MembresiaRol.rol_id -> Rol.id
-  PlanVersion.plan_id -> Plan.id
-  PlanCapacidad -> PlanVersion: plan_id + plan_version
-  PlanCapacidad.capacidad_codigo -> Capacidad.codigo
-  Suscripcion.cliente_id -> Cliente.id
-  Suscripcion -> PlanVersion: plan_id + plan_version
-  CobroSuscripcion.suscripcion_id -> Suscripcion.id
-  SiloServicio.cliente_id -> Cliente.id
-  SiloServicio.servicio_codigo -> Servicio.codigo
-  Aprovisionamiento -> SiloServicio: cliente_id + servicio_codigo
+  tenant: {
+    class: tabla
+    id: uuid {constraint: primary_key}
+    propietario_id: uuid {constraint: [foreign_key; unique]}
+    nombre_comercial: "text NULL"
+    estado: text
+  }
+
+  rol: {
+    class: tabla
+    id: uuid {constraint: primary_key}
+    codigo: text {constraint: unique}
+    nombre_visible: text
+    descripcion: "text NULL"
+    orden_visual: "int NULL"
+    estado: text
+  }
+
+  usuario_rol: {
+    class: tabla
+    id: uuid {constraint: primary_key}
+    usuario_id: uuid {constraint: foreign_key}
+    rol_id: uuid {constraint: foreign_key}
+    alcance: text
+    tenant_id: "uuid NULL" {constraint: foreign_key}
+    token_ref: "uuid NULL"
+    silos_por_servicio: "jsonb NULL"
+    fecha_creacion: "timestamptz DEFAULT now()"
+    fecha_eliminacion: "timestamptz NULL"
+  }
+
+  plan: {
+    class: tabla
+    id: uuid {constraint: primary_key}
+    codigo: text {constraint: unique}
+    nombre: text
+    descripcion: "text NULL"
+    revision: int
+    precio: "numeric(18,2)"
+    moneda: "varchar(12)"
+    periodicidad: text
+    max_tokens_propios: int
+    max_tokens_como_cliente: int
+    plan_origen_id: "uuid NULL" {constraint: foreign_key}
+    plan_destino_id: "uuid NULL" {constraint: foreign_key}
+    oferta_desde: "timestamptz NULL"
+    oferta_hasta: "timestamptz NULL"
+    estado: text
+  }
+
+  suscripcion: {
+    class: tabla
+    id: uuid {constraint: primary_key}
+    usuario_id: uuid {constraint: foreign_key}
+    tenant_id: uuid {constraint: foreign_key}
+    plan_id: uuid {constraint: foreign_key}
+    condiciones_contratadas: jsonb
+    proveedor_pago: "text NULL"
+    referencia_pago: "text NULL"
+    importe_pagado: "numeric(18,2) NULL"
+    pago_confirmado_en: "timestamptz NULL"
+    desde: timestamptz
+    hasta: "timestamptz NULL"
+    estado: text
+  }
+
+  tenant.propietario_id -> usuario.id: "Un tenant por propietario"
+  usuario_rol.usuario_id -> usuario.id
+  usuario_rol.rol_id -> rol.id
+  usuario_rol.tenant_id -> tenant.id
+  suscripcion.usuario_id -> usuario.id
+  suscripcion.tenant_id -> tenant.id: "El cambio de plan reutiliza el tenant"
+  suscripcion.plan_id -> plan.id
+  plan.plan_origen_id -> plan.id: "Elegibilidad de la oferta"
+  plan.plan_destino_id -> plan.id: "Plan de destino"
+
+  # usuario: UNIQUE (emisor_oidc, sujeto_oidc). Ambos se informan juntos.
+  # suscripcion: UNIQUE (proveedor_pago, referencia_pago).
+  # usuario_rol: GLOBAL sin tenant ni token, TENANT con tenant, TOKEN con ambos.
+  # token_ref se resuelve en el servicio propietario del token.
+  # usuario_rol tiene UNIQUE parcial para las asignaciones sin fecha de baja.
+  # TITULAR_TENANT guarda en silos_por_servicio el estado de cada base privada.
+  # tenant.estado registra BORRANDO_BASES, BORRADO_PARCIAL o BASES_BORRADAS.
 }
 
 operacion: "Inmuebles y Operación | Expediente, alquiler y cierre" {

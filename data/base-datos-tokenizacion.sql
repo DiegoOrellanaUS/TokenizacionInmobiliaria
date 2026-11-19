@@ -1,8 +1,9 @@
 -- Tokenización inmobiliaria | PostgreSQL
--- Fuente: docs/base-datos-tokenizacion.d2
+-- Fuente: data/base-datos-tokenizacion.d2
 --
 -- Ejecutar sobre una base vacía. El script crea esquemas y tablas en la
 -- base a la que ya estás conectado. Las bases físicas se aprovisionan aparte.
+-- Para actualizar una base de Admin existente, usar las migraciones de EF Core.
 -- Para instalar solo el esquema de un servicio en su base, descomenta la
 -- línea SET y elige admin, operacion, caja, comercio, tokenizacion,
 -- reportes o global. Sin SET, el valor todos crea 7 esquemas para desarrollo.
@@ -32,215 +33,146 @@ BEGIN
 END;
 $seleccion$;
 
--- Admin | Identidad, clientes, planes y aprovisionamiento
+-- Admin | Usuarios, roles, planes y multitenencia
 DO $admin$
 BEGIN
     IF current_setting('tokenizacion.servicio') IN ('todos', 'admin') THEN
         CREATE SCHEMA "admin";
 
-        CREATE TABLE "admin"."usuario" (
-            "id" uuid NOT NULL,
-            "sujeto_oidc" text NOT NULL UNIQUE,
-            "ci" text UNIQUE,
-            "correo_electronico" text UNIQUE,
-            "contrasenia_hash" text,
-            "nombre" text NOT NULL,
-            "estado" text NOT NULL,
-            PRIMARY KEY ("id"),
-            CHECK (btrim(estado) <> '')
+        CREATE TABLE admin.plan (
+            id uuid NOT NULL,
+            codigo text NOT NULL,
+            nombre text NOT NULL,
+            descripcion text,
+            revision integer NOT NULL,
+            precio numeric(18,2) NOT NULL,
+            moneda character varying(12) NOT NULL,
+            periodicidad text NOT NULL,
+            max_tokens_propios integer NOT NULL,
+            max_tokens_como_cliente integer NOT NULL,
+            plan_origen_id uuid,
+            plan_destino_id uuid,
+            oferta_desde timestamp with time zone,
+            oferta_hasta timestamp with time zone,
+            estado text NOT NULL,
+            CONSTRAINT "PK_plan" PRIMARY KEY (id),
+            CONSTRAINT ck_plan_condiciones CHECK (revision > 0 AND precio >= 0 AND max_tokens_propios >= 0 AND max_tokens_como_cliente >= 0),
+            CONSTRAINT ck_plan_oferta_fechas CHECK (oferta_hasta > oferta_desde),
+            CONSTRAINT ck_plan_transicion CHECK ((plan_origen_id IS NULL OR plan_destino_id IS NOT NULL)
+        AND (plan_origen_id IS NULL OR plan_origen_id <> plan_destino_id)
+        AND (plan_origen_id IS NULL OR plan_origen_id <> id)
+        AND (plan_destino_id IS NULL OR plan_destino_id <> id)),
+            CONSTRAINT "FK_plan_plan_plan_destino_id" FOREIGN KEY (plan_destino_id) REFERENCES admin.plan (id) ON DELETE RESTRICT,
+            CONSTRAINT "FK_plan_plan_plan_origen_id" FOREIGN KEY (plan_origen_id) REFERENCES admin.plan (id) ON DELETE RESTRICT
         );
 
-        CREATE TABLE "admin"."cliente" (
-            "id" uuid NOT NULL,
-            "codigo" text NOT NULL UNIQUE,
-            "razon_social" text NOT NULL,
-            "estado" text NOT NULL,
-            PRIMARY KEY ("id"),
-            CHECK (btrim(estado) <> '')
+        CREATE TABLE admin.rol (
+            id uuid NOT NULL,
+            codigo text NOT NULL,
+            nombre_visible text NOT NULL,
+            descripcion text,
+            orden_visual integer,
+            estado text NOT NULL,
+            CONSTRAINT "PK_rol" PRIMARY KEY (id),
+            CONSTRAINT ck_rol_orden CHECK (orden_visual >= 0)
         );
 
-        CREATE TABLE "admin"."rol" (
-            "id" uuid NOT NULL,
-            "codigo" text NOT NULL UNIQUE,
-            "nombre_visible" text NOT NULL,
-            "descripcion" text,
-            "orden_visual" int,
-            "estado" text NOT NULL,
-            PRIMARY KEY ("id"),
-            CHECK (btrim(nombre_visible) <> ''),
-            CHECK (orden_visual >= 0),
-            CHECK (btrim(estado) <> '')
+        CREATE TABLE admin.usuario (
+            id uuid NOT NULL,
+            nombres text NOT NULL,
+            apellidos text NOT NULL,
+            ci text,
+            correo_electronico text,
+            emisor_oidc text,
+            sujeto_oidc text,
+            contrasenia_hash text,
+            estado text NOT NULL,
+            CONSTRAINT "PK_usuario" PRIMARY KEY (id),
+            CONSTRAINT ck_usuario_identidad_oidc CHECK ((emisor_oidc IS NULL) = (sujeto_oidc IS NULL))
         );
 
-        CREATE TABLE "admin"."membresia" (
-            "id" uuid NOT NULL,
-            "cliente_id" uuid NOT NULL,
-            "usuario_id" uuid NOT NULL,
-            "estado" text NOT NULL,
-            "fecha_creacion" timestamptz DEFAULT now() NOT NULL,
-            "fecha_eliminacion" timestamptz,
-            PRIMARY KEY ("id"),
-            CHECK (btrim(estado) <> ''),
-            CHECK (fecha_eliminacion IS NULL OR fecha_eliminacion >= fecha_creacion)
+        CREATE TABLE admin.tenant (
+            id uuid NOT NULL,
+            propietario_id uuid NOT NULL,
+            nombre_comercial text,
+            estado text NOT NULL,
+            CONSTRAINT "PK_tenant" PRIMARY KEY (id),
+            CONSTRAINT "FK_tenant_usuario_propietario_id" FOREIGN KEY (propietario_id) REFERENCES admin.usuario (id) ON DELETE RESTRICT
         );
 
-        CREATE UNIQUE INDEX "uq_membresia_vigente" ON "admin"."membresia" ("cliente_id", "usuario_id")
-            WHERE fecha_eliminacion IS NULL;
-
-        CREATE TABLE "admin"."membresia_rol" (
-            "membresia_id" uuid NOT NULL,
-            "rol_id" uuid NOT NULL,
-            "fecha_creacion" timestamptz DEFAULT now() NOT NULL,
-            "fecha_eliminacion" timestamptz,
-            PRIMARY KEY ("membresia_id", "rol_id", "fecha_creacion"),
-            CHECK (fecha_eliminacion IS NULL OR fecha_eliminacion >= fecha_creacion)
+        CREATE TABLE admin.suscripcion (
+            id uuid NOT NULL,
+            usuario_id uuid NOT NULL,
+            tenant_id uuid NOT NULL,
+            plan_id uuid NOT NULL,
+            condiciones_contratadas jsonb NOT NULL,
+            proveedor_pago text,
+            referencia_pago text,
+            importe_pagado numeric(18,2),
+            pago_confirmado_en timestamp with time zone,
+            desde timestamp with time zone NOT NULL,
+            hasta timestamp with time zone,
+            estado text NOT NULL,
+            CONSTRAINT "PK_suscripcion" PRIMARY KEY (id),
+            CONSTRAINT ck_suscripcion_pago CHECK ((proveedor_pago IS NULL) = (referencia_pago IS NULL)
+        AND (pago_confirmado_en IS NULL OR (referencia_pago IS NOT NULL AND importe_pagado IS NOT NULL))
+        AND (importe_pagado IS NULL OR importe_pagado >= 0)),
+            CONSTRAINT ck_suscripcion_vigencia CHECK (hasta > desde),
+            CONSTRAINT "FK_suscripcion_plan_plan_id" FOREIGN KEY (plan_id) REFERENCES admin.plan (id) ON DELETE RESTRICT,
+            CONSTRAINT "FK_suscripcion_tenant_tenant_id" FOREIGN KEY (tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT,
+            CONSTRAINT "FK_suscripcion_usuario_usuario_id" FOREIGN KEY (usuario_id) REFERENCES admin.usuario (id) ON DELETE RESTRICT
         );
 
-        CREATE UNIQUE INDEX "uq_membresia_rol_vigente" ON "admin"."membresia_rol" ("membresia_id", "rol_id")
-            WHERE fecha_eliminacion IS NULL;
-
-        CREATE TABLE "admin"."plan" (
-            "id" uuid NOT NULL,
-            "codigo" text NOT NULL UNIQUE,
-            "nombre" text NOT NULL,
-            "descripcion" text,
-            "estado" text NOT NULL,
-            PRIMARY KEY ("id"),
-            CHECK (btrim(estado) <> '')
+        CREATE TABLE admin.usuario_rol (
+            id uuid NOT NULL,
+            usuario_id uuid NOT NULL,
+            rol_id uuid NOT NULL,
+            alcance text NOT NULL,
+            tenant_id uuid,
+            token_ref uuid,
+            silos_por_servicio jsonb,
+            fecha_creacion timestamp with time zone NOT NULL DEFAULT (now()),
+            fecha_eliminacion timestamp with time zone,
+            CONSTRAINT "PK_usuario_rol" PRIMARY KEY (id),
+            CONSTRAINT ck_usuario_rol_alcance CHECK ((alcance = 'GLOBAL' AND tenant_id IS NULL AND token_ref IS NULL)
+        OR (alcance = 'TENANT' AND tenant_id IS NOT NULL AND token_ref IS NULL)
+        OR (alcance = 'TOKEN' AND tenant_id IS NOT NULL AND token_ref IS NOT NULL)),
+            CONSTRAINT ck_usuario_rol_fechas CHECK (fecha_eliminacion >= fecha_creacion),
+            CONSTRAINT ck_usuario_rol_silos_alcance CHECK (silos_por_servicio IS NULL OR alcance = 'TENANT'),
+            CONSTRAINT "FK_usuario_rol_rol_rol_id" FOREIGN KEY (rol_id) REFERENCES admin.rol (id) ON DELETE RESTRICT,
+            CONSTRAINT "FK_usuario_rol_tenant_tenant_id" FOREIGN KEY (tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT,
+            CONSTRAINT "FK_usuario_rol_usuario_usuario_id" FOREIGN KEY (usuario_id) REFERENCES admin.usuario (id) ON DELETE RESTRICT
         );
 
-        CREATE TABLE "admin"."plan_version" (
-            "plan_id" uuid NOT NULL,
-            "version" int NOT NULL,
-            "precio" numeric,
-            "moneda" varchar(12),
-            "periodicidad" text,
-            PRIMARY KEY ("plan_id", "version"),
-            CHECK (version > 0)
-        );
+        CREATE UNIQUE INDEX "IX_plan_codigo" ON admin.plan (codigo);
 
-        CREATE TABLE "admin"."capacidad" (
-            "codigo" text NOT NULL,
-            "descripcion" text,
-            "nombre_visible" text NOT NULL,
-            "estado" text NOT NULL,
-            PRIMARY KEY ("codigo"),
-            CHECK (btrim(estado) <> '')
-        );
+        CREATE INDEX "IX_plan_plan_destino_id" ON admin.plan (plan_destino_id);
 
-        CREATE TABLE "admin"."plan_capacidad" (
-            "plan_id" uuid NOT NULL,
-            "plan_version" int NOT NULL,
-            "capacidad_codigo" text NOT NULL,
-            "limite" int,
-            "fecha_creacion" timestamptz DEFAULT now() NOT NULL,
-            "fecha_eliminacion" timestamptz,
-            PRIMARY KEY ("plan_id", "plan_version", "capacidad_codigo"),
-            CHECK (plan_version > 0),
-            CHECK (fecha_eliminacion IS NULL OR fecha_eliminacion >= fecha_creacion)
-        );
+        CREATE INDEX "IX_plan_plan_origen_id" ON admin.plan (plan_origen_id);
 
-        CREATE TABLE "admin"."suscripcion" (
-            "id" uuid NOT NULL,
-            "cliente_id" uuid NOT NULL,
-            "plan_id" uuid NOT NULL,
-            "plan_version" int NOT NULL,
-            "estado" text NOT NULL,
-            "desde" timestamptz,
-            "hasta" timestamptz,
-            PRIMARY KEY ("id"),
-            CHECK (plan_version > 0),
-            CHECK (btrim(estado) <> ''),
-            CHECK (hasta IS NULL OR hasta > desde)
-        );
+        CREATE UNIQUE INDEX "IX_rol_codigo" ON admin.rol (codigo);
 
-        CREATE TABLE "admin"."cobro_suscripcion" (
-            "id" uuid NOT NULL,
-            "suscripcion_id" uuid NOT NULL,
-            "proveedor" text,
-            "referencia_externa" text,
-            "importe" numeric,
-            "moneda" varchar(12),
-            "estado" text NOT NULL,
-            "confirmado_en" timestamptz,
-            PRIMARY KEY ("id"),
-            UNIQUE ("proveedor", "referencia_externa"),
-            CHECK (btrim(estado) <> '')
-        );
+        CREATE INDEX "IX_suscripcion_plan_id" ON admin.suscripcion (plan_id);
 
-        CREATE TABLE "admin"."servicio" (
-            "codigo" text NOT NULL,
-            "nombre" text,
-            "estado" text NOT NULL,
-            PRIMARY KEY ("codigo"),
-            CHECK (btrim(estado) <> '')
-        );
+        CREATE UNIQUE INDEX "IX_suscripcion_proveedor_pago_referencia_pago" ON admin.suscripcion (proveedor_pago, referencia_pago);
 
-        CREATE TABLE "admin"."silo_servicio" (
-            "cliente_id" uuid NOT NULL,
-            "servicio_codigo" text NOT NULL,
-            "localizador_bd" text,
-            "secreto_ref" text,
-            "estado" text NOT NULL,
-            "version_esquema" text,
-            "fecha_creacion" timestamptz DEFAULT now() NOT NULL,
-            "fecha_eliminacion" timestamptz,
-            PRIMARY KEY ("cliente_id", "servicio_codigo"),
-            CHECK (btrim(estado) <> ''),
-            CHECK (fecha_eliminacion IS NULL OR fecha_eliminacion >= fecha_creacion)
-        );
+        CREATE INDEX "IX_suscripcion_tenant_id" ON admin.suscripcion (tenant_id);
 
-        CREATE TABLE "admin"."aprovisionamiento" (
-            "id" uuid NOT NULL,
-            "cliente_id" uuid NOT NULL,
-            "servicio_codigo" text NOT NULL,
-            "idempotencia" text UNIQUE,
-            "operacion" text,
-            "estado" text NOT NULL,
-            "iniciado_en" timestamptz,
-            "finalizado_en" timestamptz,
-            PRIMARY KEY ("id"),
-            CHECK (btrim(estado) <> '')
-        );
+        CREATE INDEX "IX_suscripcion_usuario_id" ON admin.suscripcion (usuario_id);
 
-        ALTER TABLE "admin"."membresia" ADD CONSTRAINT "fk_membresia_1"
-            FOREIGN KEY ("cliente_id") REFERENCES "admin"."cliente" ("id");
+        CREATE UNIQUE INDEX "IX_tenant_propietario_id" ON admin.tenant (propietario_id);
 
-        ALTER TABLE "admin"."membresia" ADD CONSTRAINT "fk_membresia_2"
-            FOREIGN KEY ("usuario_id") REFERENCES "admin"."usuario" ("id");
+        CREATE UNIQUE INDEX "IX_usuario_ci" ON admin.usuario (ci);
 
-        ALTER TABLE "admin"."membresia_rol" ADD CONSTRAINT "fk_membresia_rol_3"
-            FOREIGN KEY ("membresia_id") REFERENCES "admin"."membresia" ("id");
+        CREATE UNIQUE INDEX "IX_usuario_correo_electronico" ON admin.usuario (correo_electronico);
 
-        ALTER TABLE "admin"."membresia_rol" ADD CONSTRAINT "fk_membresia_rol_4"
-            FOREIGN KEY ("rol_id") REFERENCES "admin"."rol" ("id");
+        CREATE UNIQUE INDEX "IX_usuario_emisor_oidc_sujeto_oidc" ON admin.usuario (emisor_oidc, sujeto_oidc);
 
-        ALTER TABLE "admin"."plan_version" ADD CONSTRAINT "fk_plan_version_5"
-            FOREIGN KEY ("plan_id") REFERENCES "admin"."plan" ("id");
+        CREATE INDEX "IX_usuario_rol_rol_id" ON admin.usuario_rol (rol_id);
 
-        ALTER TABLE "admin"."plan_capacidad" ADD CONSTRAINT "fk_plan_capacidad_6"
-            FOREIGN KEY ("plan_id", "plan_version") REFERENCES "admin"."plan_version" ("plan_id", "version");
+        CREATE UNIQUE INDEX "IX_usuario_rol_usuario_id_rol_id_tenant_id_token_ref" ON admin.usuario_rol (usuario_id, rol_id, tenant_id, token_ref) NULLS NOT DISTINCT WHERE fecha_eliminacion IS NULL;
 
-        ALTER TABLE "admin"."plan_capacidad" ADD CONSTRAINT "fk_plan_capacidad_7"
-            FOREIGN KEY ("capacidad_codigo") REFERENCES "admin"."capacidad" ("codigo");
-
-        ALTER TABLE "admin"."suscripcion" ADD CONSTRAINT "fk_suscripcion_8"
-            FOREIGN KEY ("cliente_id") REFERENCES "admin"."cliente" ("id");
-
-        ALTER TABLE "admin"."suscripcion" ADD CONSTRAINT "fk_suscripcion_9"
-            FOREIGN KEY ("plan_id", "plan_version") REFERENCES "admin"."plan_version" ("plan_id", "version");
-
-        ALTER TABLE "admin"."cobro_suscripcion" ADD CONSTRAINT "fk_cobro_suscripcion_10"
-            FOREIGN KEY ("suscripcion_id") REFERENCES "admin"."suscripcion" ("id");
-
-        ALTER TABLE "admin"."silo_servicio" ADD CONSTRAINT "fk_silo_servicio_11"
-            FOREIGN KEY ("cliente_id") REFERENCES "admin"."cliente" ("id");
-
-        ALTER TABLE "admin"."silo_servicio" ADD CONSTRAINT "fk_silo_servicio_12"
-            FOREIGN KEY ("servicio_codigo") REFERENCES "admin"."servicio" ("codigo");
-
-        ALTER TABLE "admin"."aprovisionamiento" ADD CONSTRAINT "fk_aprovisionamiento_13"
-            FOREIGN KEY ("cliente_id", "servicio_codigo") REFERENCES "admin"."silo_servicio" ("cliente_id", "servicio_codigo");
+        CREATE UNIQUE INDEX uq_usuario_rol_silos_tenant ON admin.usuario_rol (tenant_id) WHERE fecha_eliminacion IS NULL AND silos_por_servicio IS NOT NULL;
     END IF;
 END;
 $admin$;

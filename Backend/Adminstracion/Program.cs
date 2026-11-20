@@ -12,7 +12,8 @@ builder.Services.AddDbContext<AdminContext>(options =>
     options.UseNpgsql(connectionString, postgres => postgres.MigrationsHistoryTable("__AdminMigrationsHistory")));
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
-builder.Services.AddHttpClient("AdministracionInterna", client => client.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.AddHttpClient("AdministracionInterna", client => client.Timeout = TimeSpan.FromSeconds(45))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<AprovisionarTenant>();
 builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 

@@ -164,7 +164,12 @@ public class SubscripcionesController(AdminContext context, AprovisionarTenant a
         }
 
         var estado = await context.Suscripcion.Where(s => s.id == suscripcionId).Select(s => s.estado).SingleAsync(ct);
-        if (estado == "APROVISIONANDO" && await aprovisionador.Ejecutar(tenantId, ct))
+        var silosListos = estado == "ACTIVA" &&
+            (await aprovisionador.EstadosSilos(tenantId, ct)).Values.All(silo => silo == "LISTO");
+        if (!silosListos && estado is "APROVISIONANDO" or "ACTIVA")
+            silosListos = await aprovisionador.Ejecutar(tenantId, ct);
+
+        if (estado == "APROVISIONANDO" && silosListos)
         {
             await using var transaccion = await context.Database.BeginTransactionAsync(ct);
             await AprovisionarTenant.Bloquear(context, $"usuario:{registro.UsuarioId:N}", ct);
@@ -196,7 +201,7 @@ public class SubscripcionesController(AdminContext context, AprovisionarTenant a
         var servicios = (await aprovisionador.EstadosSilos(tenantId, ct))
             .OrderBy(s => s.Key).Select(s => new { Servicio = s.Key, Estado = s.Value });
         var resultado = new { SubscripcionId = suscripcionId, ClienteId = tenantId, TenantId = tenantId, Estado = estado, Servicios = servicios };
-        if (estado == "APROVISIONANDO")
+        if (estado == "APROVISIONANDO" || estado == "ACTIVA" && !silosListos)
             return AcceptedAtAction(nameof(GetSubscripcion), new { subscripcionid = suscripcionId }, resultado);
         return creada
             ? CreatedAtAction(nameof(GetSubscripcion), new { subscripcionid = suscripcionId }, resultado)

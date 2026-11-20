@@ -8,10 +8,12 @@ namespace Adminstracion.Servicios;
 public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory,
     IConfiguration configuration, ILogger<AprovisionarTenant> logger)
 {
-    private static readonly (string Codigo, string Nombre, string Url)[] Servicios =
+    private static readonly (string Codigo, string Nombre, string Url, bool RequiereClaveInterna)[] Servicios =
     [
-        ("archivos", "Archivos", "https://localhost:7343"),
-        ("expedientes", "Expedientes", "https://localhost:7173")
+        ("archivos", "Archivos", "https://localhost:7343", false),
+        ("expedientes", "Expedientes", "https://localhost:7173", false),
+        ("inmuebles", "InmueblesOperacion", "https://localhost:7311", true),
+        ("tokenizacion", "Tokenizacion", "https://localhost:7314", true)
     ];
 
     public static Task Bloquear(AdminContext context, string clave, CancellationToken ct) =>
@@ -31,7 +33,10 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
     public async Task<Dictionary<string, string>> EstadosSilos(Guid tenantId, CancellationToken ct)
     {
         var json = await AsignacionesTitular(tenantId).Select(r => r.silos_por_servicio).SingleAsync(ct);
-        return LeerSilos(json);
+        var estados = LeerSilos(json);
+        foreach (var servicio in Servicios)
+            estados.TryAdd(servicio.Codigo, "PENDIENTE");
+        return estados;
     }
 
     public async Task<bool> Ejecutar(Guid tenantId, CancellationToken ct)
@@ -77,8 +82,8 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
         using var client = factory.CreateClient("AdministracionInterna");
         foreach (var servicio in servicios)
         {
-            using var response = await client.PostAsync(
-                $"{ObtenerUrl(servicio)}/interno/tenants/{tenantId}/preparar", null, ct);
+            using var request = CrearSolicitud(HttpMethod.Post, servicio, tenantId, "preparar");
+            using var response = await client.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
         }
     }
@@ -155,22 +160,33 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
     private async Task EliminarBaseAsync(string servicio, Guid tenantId, CancellationToken ct)
     {
         using var client = factory.CreateClient("AdministracionInterna");
-        using var response = await client.DeleteAsync($"{ObtenerUrl(servicio)}/interno/tenants/{tenantId}/base", ct);
+        using var request = CrearSolicitud(HttpMethod.Delete, servicio, tenantId, "base");
+        using var response = await client.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }
 
     private static Dictionary<string, string> LeerSilos(string? json) =>
         json == null ? new Dictionary<string, string>() : JsonSerializer.Deserialize<Dictionary<string, string>>(json)!;
 
-    private string ObtenerUrl(string servicio)
+    private HttpRequestMessage CrearSolicitud(HttpMethod metodo, string servicio, Guid tenantId, string operacion)
     {
         foreach (var destino in Servicios)
         {
             var url = (configuration[$"Aprovisionamiento:{destino.Nombre}"] ?? destino.Url).TrimEnd('/');
-            if (destino.Nombre == servicio || string.Equals(destino.Url, servicio, StringComparison.Ordinal)
-                || string.Equals(url, servicio, StringComparison.Ordinal))
-                return url;
+            if (destino.Nombre != servicio && !string.Equals(destino.Url, servicio, StringComparison.Ordinal)
+                && !string.Equals(url, servicio, StringComparison.Ordinal))
+                continue;
+
+            var clave = destino.RequiereClaveInterna ? configuration["Aprovisionamiento:ClaveInterna"] : null;
+            if (destino.RequiereClaveInterna && string.IsNullOrWhiteSpace(clave))
+                throw new HttpRequestException("Falta configurar Aprovisionamiento:ClaveInterna para aprovisionar el servicio.");
+
+            var solicitud = new HttpRequestMessage(metodo, $"{url}/interno/tenants/{tenantId:D}/{operacion}");
+            if (clave is not null)
+                solicitud.Headers.Add("X-Aprovisionamiento-Interna", clave);
+            return solicitud;
         }
+
         throw new ArgumentException("Microservicio no permitido.", nameof(servicio));
     }
 }

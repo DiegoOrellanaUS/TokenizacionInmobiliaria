@@ -1,10 +1,11 @@
 # Registro y revisión de inmuebles
 
-Para iniciar el flujo, el propietario debe tener un tenant activo, el rol `TITULAR_TENANT` vigente y una suscripción activa para ese tenant. Admin comprueba las tres condiciones. Inmuebles aplica sus migraciones en `inmuebles_operacion_{tenantId:N}` en el primer acceso autorizado. Esto sirve también para tenants suscritos antes de habilitar Inmuebles.
+Para iniciar el flujo, el propietario debe tener un tenant activo, el rol `TITULAR_TENANT` vigente y una suscripción activa para ese tenant. Admin comprueba las tres condiciones. Al contratar, Admin aprovisiona `inmuebles_operacion_{tenantId:N}` y `tokenizacion_{tenantId:N}` junto con Archivos y Expedientes. La suscripción nueva pasa a `ACTIVA` cuando los cuatro servicios responden `LISTO`. Si alguno está pendiente, repite el alta con el mismo plan, usuario y referencia de pago para completar el aprovisionamiento. Esto también permite preparar bases faltantes para una suscripción anterior.
 
 ## Configuración local
 
-- Inicia Admin, Inmuebles y Gateway. Si vas a crear suscripciones nuevas, inicia también Archivos y Expedientes para el aprovisionamiento que ya realiza Admin.
+- Inicia Admin, Inmuebles, Tokenización, Archivos, Expedientes y Gateway para hacer el flujo completo.
+- Configura el mismo valor privado de `Aprovisionamiento__ClaveInterna` en Admin, Inmuebles y Tokenización. Úsalo solo para la comunicación interna. Admin llama directamente a los servicios. Si cambias los puertos, ajusta `Aprovisionamiento__InmueblesOperacion` y `Aprovisionamiento__Tokenizacion` en Admin.
 - Configura la misma variable `Inmuebles__ClaveInterna` en Admin e Inmuebles con un valor privado. `Inmuebles__AdminUrl` en Inmuebles apunta a Admin. Su valor local predeterminado es `https://localhost:7266/`.
 - Para habilitar un revisor, asigna a su usuario un rol global vigente `REVISOR_INMUEBLE` o `SUPER_ADMIN` en Admin y agrega su UUID a la configuración de Admin, por ejemplo con `Inmuebles__Revisores__0`.
 - Usa HTTPS con los encabezados `X-Tenant` y `Authorization: Basic <base64(usuarioId:contraseña)>`. El UUID es el del usuario de Admin. Para probar desde [Scalar de Gateway](https://localhost:7339/scalar), selecciona **Inmuebles y Operación**.
@@ -43,7 +44,7 @@ El catálogo de eventos se autentica con una clave distinta a la de Admin. El Ga
 
 ## Emitir el token de un inmueble aprobado
 
-Inicia también Tokenización. El servicio usa Stellar CLI y prepara la base `tokenizacion_{tenantId:N}` al acceder por primera vez. Configura en Tokenización los mismos valores de `Inmuebles__ClaveInterna` que usa Admin y de `Inmuebles__ClaveEventos` que usa Inmuebles. Para instalaciones con otras direcciones, configura `Tokenizacion__AdminUrl` y `Tokenizacion__InmueblesUrl`. La CLI local se busca en `bin/stellar/stellar.exe` y puede configurarse con `Stellar__Ejecutable`.
+Tokenización usa Stellar CLI y conserva las emisiones en la base privada que se prepara al contratar la suscripción. Configura en Tokenización los mismos valores de `Inmuebles__ClaveInterna` que usa Admin y de `Inmuebles__ClaveEventos` que usa Inmuebles. Para instalaciones con otras direcciones, configura `Tokenizacion__AdminUrl` y `Tokenizacion__InmueblesUrl`. La CLI local se busca en `bin/stellar/stellar.exe` y puede configurarse con `Stellar__Ejecutable`.
 
 Con el inmueble aprobado, usa el documento **Tokenizacion** del [Scalar de Gateway](https://localhost:7339/scalar), conserva el `X-Tenant` del titular y usa sus credenciales Basic.
 

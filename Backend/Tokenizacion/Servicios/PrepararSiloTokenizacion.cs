@@ -9,6 +9,20 @@ public sealed class PrepararSiloTokenizacion
     private readonly ConcurrentDictionary<Guid, byte> migrados = new();
     private readonly SemaphoreSlim bloqueo = new(1);
 
+    public async Task EliminarAsync(Guid tenantId, TokenizacionContext context, CancellationToken ct)
+    {
+        await bloqueo.WaitAsync(ct);
+        try
+        {
+            migrados.TryRemove(tenantId, out _);
+            await context.Database.EnsureDeletedAsync(ct);
+        }
+        finally
+        {
+            bloqueo.Release();
+        }
+    }
+
     public async Task EjecutarAsync(Guid tenantId, TokenizacionContext context, CancellationToken ct)
     {
         if (migrados.ContainsKey(tenantId))

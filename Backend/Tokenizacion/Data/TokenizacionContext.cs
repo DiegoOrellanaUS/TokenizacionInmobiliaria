@@ -7,6 +7,7 @@ namespace Tokenizacion.Data
     {
         public DbSet<Billetera> Billetera { get; set; } = default!;
         public DbSet<ActivoCadena> ActivoCadena { get; set; } = default!;
+        public DbSet<EmisionInmueble> EmisionInmueble { get; set; } = default!;
         public DbSet<BilleteraHabilitada> BilleteraHabilitada { get; set; } = default!;
         public DbSet<InstruccionCadena> InstruccionCadena { get; set; } = default!;
         public DbSet<TransaccionCadena> TransaccionCadena { get; set; } = default!;
@@ -40,6 +41,14 @@ namespace Tokenizacion.Data
                 entidad.HasIndex(fila => new { fila.red, fila.emisor, fila.codigo })
                     .IsUnique()
                     .HasDatabaseName("activo_cadena_red_emisor_codigo_key");
+            });
+
+            modelBuilder.Entity<EmisionInmueble>(entidad =>
+            {
+                entidad.HasOne(fila => fila.Instruccion).WithOne()
+                    .HasForeignKey<EmisionInmueble>(fila => fila.instruccion_id).OnDelete(DeleteBehavior.Restrict);
+                entidad.HasOne(fila => fila.Transaccion).WithOne()
+                    .HasForeignKey<EmisionInmueble>(fila => fila.transaccion_id).OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<BilleteraHabilitada>(entidad =>

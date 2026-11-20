@@ -1,6 +1,11 @@
-@Gateway_HostAddress = http://localhost:5215
+@Gateway_HostAddress = https://localhost:7339
+@TenantId = 11111111-1111-4111-8111-111111111111
 
-GET {{Gateway_HostAddress}}/weatherforecast/
+GET {{Gateway_HostAddress}}/openapi/tokenizacion.json
 Accept: application/json
 
 ###
+
+GET {{Gateway_HostAddress}}/api/Tokenizacion/Estado
+Accept: application/json
+X-Tenant: {{TenantId}}

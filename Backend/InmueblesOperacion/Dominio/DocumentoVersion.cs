@@ -16,6 +16,9 @@ namespace InmueblesOperacion.Dominio
 
         public string hash { get; set; } = null!;
 
+        [JsonIgnore]
+        public byte[]? contenido { get; set; }
+
         public DateTimeOffset fecha { get; set; }
 
         [ForeignKey(nameof(documento_id))]

@@ -18,5 +18,11 @@ namespace InmueblesOperacion.Dominio
         public string? tipo { get; set; }
 
         public string? ciudad { get; set; }
+
+        public decimal superficie_m2 { get; set; }
+
+        public string estado_revision { get; set; } = "BORRADOR";
+
+        public Guid creado_por_ref { get; set; }
     }
 }

@@ -18,6 +18,8 @@ namespace InmueblesOperacion.Dominio
 
         public decimal? cuota { get; set; }
 
+        public DateTimeOffset? verificada_en { get; set; }
+
         public DateTimeOffset fecha_creacion { get; set; }
 
         public DateTimeOffset? fecha_eliminacion { get; set; }

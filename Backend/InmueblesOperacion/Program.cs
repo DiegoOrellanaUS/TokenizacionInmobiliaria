@@ -7,6 +7,13 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<TenantContext>();
+builder.Services.AddSingleton<PrepararSilo>();
+builder.Services.AddHttpClient("AdminInmuebles", client =>
+{
+    var direccion = builder.Configuration["Inmuebles:AdminUrl"] ?? "https://localhost:7266/";
+    client.BaseAddress = new Uri(direccion.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddDbContext<InmueblesOperacionContext>((services, options) =>
 {
     var tenant = services.GetRequiredService<TenantContext>();

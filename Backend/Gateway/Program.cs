@@ -24,16 +24,23 @@ app.Use(async (context, next) =>
 
 if (app.Environment.IsDevelopment())
 {
+    app.UseStaticFiles();
+
     app.MapScalarApiReference(options =>
     {
         options
+            .WithJavaScriptConfiguration("/scalar-config.js")
             .AddDocument("administracion", "Administracion",
                 "/openapi/administracion.json")
             .AddDocument("archivos", "Archivos",
                 "/openapi/archivos.json")
             .AddDocument("expedientes", "Expedientes",
                 "/openapi/expedientes.json")
-            .AddServer("https://localhost:7039", "Gateway");
+            .AddDocument("tokenizacion", "Tokenizacion",
+                "/openapi/tokenizacion.json")
+            .AddDocument("inmuebles", "Inmuebles y Operación",
+                "/openapi/inmuebles.json")
+            .AddServer("https://localhost:7339", "Gateway");
     });
 }
 

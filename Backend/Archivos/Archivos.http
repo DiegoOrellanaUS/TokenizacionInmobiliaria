@@ -1,6 +1,6 @@
-@Archivos_HostAddress = http://localhost:5237
+@Archivos_HostAddress = https://localhost:7343
 
-GET {{Archivos_HostAddress}}/weatherforecast/
+GET {{Archivos_HostAddress}}/openapi/v1.json
 Accept: application/json
 
 ###

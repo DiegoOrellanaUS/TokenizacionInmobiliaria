@@ -30,7 +30,7 @@ builder.Services.AddTransient<TenantHeaderHandler>();
 
 builder.Services.AddHttpClient("Archivos", client =>
 {
-    client.BaseAddress = new Uri("https://localhost:7043/");
+    client.BaseAddress = new Uri("https://localhost:7343/");
 })
 .AddHttpMessageHandler<TenantHeaderHandler>();
 

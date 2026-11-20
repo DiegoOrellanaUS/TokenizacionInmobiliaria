@@ -8,6 +8,8 @@ namespace InmueblesOperacion.Data
         public DbSet<Parte> Parte { get; set; } = default!;
         public DbSet<UsuarioParte> UsuarioParte { get; set; } = default!;
         public DbSet<Inmueble> Inmueble { get; set; } = default!;
+        public DbSet<InmuebleRevision> InmuebleRevision { get; set; } = default!;
+        public DbSet<EventoInmueble> EventoInmueble { get; set; } = default!;
         public DbSet<Unidad> Unidad { get; set; } = default!;
         public DbSet<PermisoInmueble> PermisoInmueble { get; set; } = default!;
         public DbSet<Titularidad> Titularidad { get; set; } = default!;
@@ -572,10 +574,50 @@ namespace InmueblesOperacion.Data
 
             modelBuilder.Entity<Inmueble>(entidad =>
             {
+                entidad.Property(fila => fila.superficie_m2).HasPrecision(14, 2);
+                entidad.Property(fila => fila.estado_revision).HasDefaultValue("BORRADOR");
+
                 entidad.ToTable(tabla =>
                 {
                     tabla.HasCheckConstraint("ck_inmueble_1", "btrim(estado) <> ''");
+                    tabla.HasCheckConstraint("ck_inmueble_superficie_m2", "superficie_m2 > 0 AND superficie_m2 <> 'NaN'::numeric");
+                    tabla.HasCheckConstraint("ck_inmueble_estado_revision",
+                        "estado_revision IN ('BORRADOR', 'EN_REVISION', 'CON_OBSERVACIONES', 'APROBADO')");
+                    tabla.HasCheckConstraint("ck_inmueble_creado_por_ref",
+                        "creado_por_ref <> '00000000-0000-0000-0000-000000000000'::uuid");
                 });
+            });
+
+            modelBuilder.Entity<EventoInmueble>(entidad =>
+            {
+                entidad.HasOne(fila => fila.Inmueble)
+                    .WithMany()
+                    .HasForeignKey(fila => fila.inmueble_id)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("fk_evento_inmueble");
+            });
+
+            modelBuilder.Entity<InmuebleRevision>(entidad =>
+            {
+                entidad.ToTable(tabla =>
+                {
+                    tabla.HasCheckConstraint("ck_inmueble_revision_decision",
+                        "decision IN ('APROBADO', 'CON_OBSERVACIONES')");
+                    tabla.HasCheckConstraint("ck_inmueble_revision_observacion",
+                        "decision <> 'CON_OBSERVACIONES' OR (observacion IS NOT NULL AND observacion ~ '[^[:space:]]')");
+                    tabla.HasCheckConstraint("ck_inmueble_revision_revisor_ref",
+                        "revisor_ref <> '00000000-0000-0000-0000-000000000000'::uuid");
+                });
+
+                entidad.Property(fila => fila.revisado_en).HasDefaultValueSql("now()");
+                entidad.HasIndex(fila => new { fila.inmueble_id, fila.revisado_en })
+                    .IsDescending(false, true)
+                    .HasDatabaseName("ix_inmueble_revision_inmueble_fecha");
+
+                entidad.HasOne(fila => fila.Inmueble)
+                    .WithMany()
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .HasConstraintName("fk_inmueble_revision_inmueble");
             });
 
             modelBuilder.Entity<Documento>(entidad =>

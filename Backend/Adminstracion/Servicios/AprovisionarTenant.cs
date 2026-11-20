@@ -10,7 +10,7 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
 {
     private static readonly (string Codigo, string Nombre, string Url)[] Servicios =
     [
-        ("archivos", "Archivos", "https://localhost:7043"),
+        ("archivos", "Archivos", "https://localhost:7343"),
         ("expedientes", "Expedientes", "https://localhost:7173")
     ];
 

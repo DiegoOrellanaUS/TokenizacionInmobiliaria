@@ -203,14 +203,23 @@ admin: "Admin | Usuarios, roles, planes y multitenencia" {
 operacion: "Inmuebles y Operación | Expediente, alquiler y cierre" {
   Parte: {class: tabla; id: uuid {constraint: primary_key}; nombre: text; clase: text; estado: text}
   UsuarioParte: {class: tabla; usuario_ref: uuid {constraint: primary_key}; parte_id: uuid {constraint: [primary_key; foreign_key]}; fecha_creacion: timestamptz {constraint: primary_key}; fecha_eliminacion: timestamptz}
-  Inmueble: {class: tabla; id: uuid {constraint: primary_key}; nombre: text; direccion: text; estado: text; tipo: text; ciudad: text}
+  Inmueble: {class: tabla; id: uuid {constraint: primary_key}; nombre: text; direccion: text; estado: text; tipo: text; ciudad: text; superficie_m2: "numeric(14,2)"; estado_revision: text; creado_por_ref: uuid}
+  InmuebleRevision: {class: tabla; id: uuid {constraint: primary_key}; inmueble_id: uuid {constraint: foreign_key}; decision: text; observacion: text; revisor_ref: uuid; revisado_en: timestamptz}
+  EventoInmueble: {class: tabla; id: bigint {constraint: primary_key}; inmueble_id: uuid {constraint: foreign_key}; estado_revision: text; ocurrido_en: timestamptz}
+  # superficie_m2 obligatoria y positiva. El estado de revisión inicia en BORRADOR.
+  # Estados de revisión: BORRADOR, EN_REVISION, CON_OBSERVACIONES, APROBADO.
+  # Cada revisión registra APROBADO o CON_OBSERVACIONES. Las observaciones son obligatorias para pedir cambios.
+  # creado_por_ref y revisor_ref identifican usuarios de Admin mediante sus UUID.
+  # El silo se selecciona por Tenant.id. Admin valida el rol TITULAR_TENANT y la suscripción vigente.
+  # La titularidad de la propiedad se registra por separado en Titularidad y UsuarioParte.
+  # Guardar la decisión y actualizar estado_revision en la misma transacción.
   Unidad: {class: tabla; id: uuid {constraint: primary_key}; inmueble_id: uuid {constraint: foreign_key}; codigo: text; estado: text}
   PermisoInmueble: {class: tabla; usuario_ref: uuid {constraint: primary_key}; inmueble_id: uuid {constraint: [primary_key; foreign_key]}; permiso: text {constraint: primary_key}; fecha_creacion: timestamptz {constraint: primary_key}; fecha_eliminacion: timestamptz}
-  Titularidad: {class: tabla; inmueble_id: uuid {constraint: [primary_key; foreign_key]}; parte_id: uuid {constraint: [primary_key; foreign_key]}; desde: date {constraint: primary_key}; hasta: date; cuota: numeric; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}
+  Titularidad: {class: tabla; inmueble_id: uuid {constraint: [primary_key; foreign_key]}; parte_id: uuid {constraint: [primary_key; foreign_key]}; desde: date {constraint: primary_key}; hasta: date; cuota: numeric; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz; verificada_en: timestamptz}
   Contrato: {class: tabla; id: uuid {constraint: primary_key}; unidad_id: uuid {constraint: foreign_key}; inicio: date; fin: date; moneda: "varchar(12)"; renta: numeric; estado: text}
   ContratoParte: {class: tabla; contrato_id: uuid {constraint: [primary_key; foreign_key]}; parte_id: uuid {constraint: [primary_key; foreign_key]}; rol: text {constraint: primary_key}; fecha_creacion: timestamptz {constraint: primary_key}; fecha_eliminacion: timestamptz}
   Documento: {class: tabla; id: uuid {constraint: primary_key}; clase: text; creado_por_ref: uuid; estado: text}
-  DocumentoVersion: {class: tabla; documento_id: uuid {constraint: [primary_key; foreign_key]}; version: int {constraint: primary_key}; objeto: text; hash: text; fecha: timestamptz}
+  DocumentoVersion: {class: tabla; documento_id: uuid {constraint: [primary_key; foreign_key]}; version: int {constraint: primary_key}; objeto: text; hash: text; fecha: timestamptz; contenido: bytea}
   InmuebleDocumento: {class: tabla; inmueble_id: uuid {constraint: [primary_key; foreign_key]}; documento_id: uuid {constraint: [primary_key; foreign_key]}; fecha_creacion: timestamptz {constraint: primary_key}; fecha_eliminacion: timestamptz}
   ContratoDocumento: {class: tabla; contrato_id: uuid {constraint: [primary_key; foreign_key]}; documento_id: uuid {constraint: [primary_key; foreign_key]}; fecha_creacion: timestamptz {constraint: primary_key}; fecha_eliminacion: timestamptz}
   Categoria: {class: tabla; id: uuid {constraint: primary_key}; codigo: text {constraint: unique}; nombre: text; naturaleza: text; estado: text}
@@ -236,6 +245,8 @@ operacion: "Inmuebles y Operación | Expediente, alquiler y cierre" {
   Avaluo: {class: tabla; id: uuid {constraint: primary_key}; inmueble_id: uuid {constraint: foreign_key}; tasador_id: uuid {constraint: foreign_key}; metodo: text; fecha_valuacion: date; importe: numeric; moneda: "varchar(12)"; documento_id: uuid {constraint: foreign_key}; documento_version: int {constraint: foreign_key}; estado: text}
 
   UsuarioParte.parte_id -> Parte.id
+  InmuebleRevision.inmueble_id -> Inmueble.id
+  EventoInmueble.inmueble_id -> Inmueble.id
   Unidad.inmueble_id -> Inmueble.id
   PermisoInmueble.inmueble_id -> Inmueble.id
   Titularidad.inmueble_id -> Inmueble.id
@@ -374,6 +385,9 @@ tokenizacion: "Tokenización | Emisión, transferencias y conciliación en caden
   BilleteraHabilitada: {class: tabla; activo_id: uuid {constraint: [primary_key; foreign_key]}; billetera_id: uuid {constraint: [primary_key; foreign_key]}; desde: timestamptz {constraint: primary_key}; hasta: timestamptz; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}
   InstruccionCadena: {class: tabla; id: uuid {constraint: primary_key}; activo_id: uuid {constraint: foreign_key}; origen_id: uuid {constraint: foreign_key}; destino_id: uuid {constraint: foreign_key}; liquidacion_ref: uuid; clase: text; cantidad_base: bigint; idempotencia: text {constraint: unique}; estado: text}
   TransaccionCadena: {class: tabla; id: uuid {constraint: primary_key}; red: text; hash: text; confirmada_en: timestamptz; estado: text; numero_ledger: bigint}
+  EmisionInmueble: {class: tabla; inmueble_ref: uuid {constraint: primary_key}; instruccion_id: uuid {constraint: [unique; foreign_key]}; creado_por_ref: uuid; creada_en: timestamptz; transaccion_id: uuid {constraint: [unique; foreign_key]}; sobre_firmado: text; hash: text}
+  # inmueble_ref se valida en Inmuebles y Operación dentro del mismo tenant.
+  # La instrucción de emisión conserva la cantidad solicitada. El sobre firmado se guarda antes del envío a Stellar.
   OperacionCadena: {class: tabla; transaccion_id: uuid {constraint: [primary_key; foreign_key]}; indice: int {constraint: primary_key}; instruccion_id: uuid {constraint: foreign_key}; activo_id: uuid {constraint: foreign_key}; origen_id: uuid {constraint: foreign_key}; destino_id: uuid {constraint: foreign_key}; clase: text; cantidad_base: bigint}
   ConciliacionCadena: {class: tabla; id: uuid {constraint: primary_key}; activo_id: uuid {constraint: foreign_key}; corte: timestamptz; estado: text}
   ConciliacionSaldo: {class: tabla; conciliacion_id: uuid {constraint: [primary_key; foreign_key]}; billetera_id: uuid {constraint: [primary_key; foreign_key]}; esperado_base: bigint; observado_base: bigint; fecha_creacion: timestamptz; fecha_eliminacion: timestamptz}
@@ -383,6 +397,8 @@ tokenizacion: "Tokenización | Emisión, transferencias y conciliación en caden
 
   BilleteraHabilitada.activo_id -> ActivoCadena.id
   BilleteraHabilitada.billetera_id -> Billetera.id
+  EmisionInmueble.instruccion_id -> InstruccionCadena.id
+  EmisionInmueble.transaccion_id -> TransaccionCadena.id
   InstruccionCadena.activo_id -> ActivoCadena.id
   InstruccionCadena.origen_id -> Billetera.id
   InstruccionCadena.destino_id -> Billetera.id

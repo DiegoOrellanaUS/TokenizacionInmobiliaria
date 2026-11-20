@@ -1,4 +1,5 @@
 using Tokenizacion.Data;
+using Tokenizacion.Servicios;
 using Tokenizacion.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -24,6 +25,24 @@ builder.Services.AddDbContext<TokenizacionContext>((services, options) =>
     options.UseNpgsql(connectionBuilder.ConnectionString);
 });
 
+builder.Services.AddSingleton<StellarCli>();
+builder.Services.AddSingleton<PrepararSiloTokenizacion>();
+builder.Services.AddScoped<EmitirInmueble>();
+builder.Services.AddHttpClient("AdminTokenizacion", client =>
+{
+    client.BaseAddress = new Uri((builder.Configuration["Tokenizacion:AdminUrl"] ?? "https://localhost:7266").TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient("InmueblesTokenizacion", client =>
+{
+    client.BaseAddress = new Uri((builder.Configuration["Tokenizacion:InmueblesUrl"] ?? "https://localhost:7311").TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RedStellar>(client =>
+{
+    client.BaseAddress = new Uri("https://soroban-testnet.stellar.org/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 

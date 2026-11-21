@@ -12,6 +12,7 @@ namespace Tokenizacion.Data
                 .SetBasePath(directory)
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("appsettings.Development.json", optional: true)
+                .AddUserSecrets<TokenizacionContext>()
                 .AddEnvironmentVariables()
                 .Build();
 

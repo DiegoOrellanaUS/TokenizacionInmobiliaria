@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Adminstracion.Data;
 using Adminstracion.Dominio;
+using Adminstracion.Servicios;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,7 @@ namespace Adminstracion.Controllers;
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("interno/inmuebles")]
 public class AccesoInmueblesController(
-    AdminContext context, IPasswordHasher<Usuario> hasher, IConfiguration configuration) : ControllerBase
+    AdminContext context, IPasswordHasher<Usuario> hasher, IConfiguration configuration, SesionDemo sesiones) : ControllerBase
 {
     [HttpGet("{tenantId:guid}/acceso")]
     public async Task<IActionResult> GetAcceso(Guid tenantId, CancellationToken ct)
@@ -25,14 +26,16 @@ public class AccesoInmueblesController(
             !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(clave), Encoding.UTF8.GetBytes(recibida.ToString())))
             return NotFound();
 
-        if (!LeerCredenciales(Request.Headers.Authorization.ToString(), out var usuarioId, out var password))
+        var esSesionDemo = sesiones.Leer(HttpContext, out var usuarioId);
+        var password = string.Empty;
+        if (!esSesionDemo && !LeerCredenciales(Request.Headers.Authorization.ToString(), out usuarioId, out password))
             return Unauthorized();
 
         var usuario = await (from u in context.Usuario.AsNoTracking()
                              where u.id == usuarioId && u.estado == "ACTIVO"
                              select u).FirstOrDefaultAsync(ct);
-        if (usuario?.contrasenia_hash is not { } hash ||
-            hasher.VerifyHashedPassword(usuario, hash, password) == PasswordVerificationResult.Failed)
+        if (usuario is null || (!esSesionDemo && (usuario.contrasenia_hash is not { } hash ||
+            hasher.VerifyHashedPassword(usuario, hash, password) == PasswordVerificationResult.Failed)))
             return Unauthorized();
 
         var ahora = DateTimeOffset.UtcNow;

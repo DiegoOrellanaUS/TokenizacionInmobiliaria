@@ -8,6 +8,7 @@ namespace Tokenizacion.Data
         public DbSet<Billetera> Billetera { get; set; } = default!;
         public DbSet<ActivoCadena> ActivoCadena { get; set; } = default!;
         public DbSet<EmisionInmueble> EmisionInmueble { get; set; } = default!;
+        public DbSet<TransferenciaCompraDemo> TransferenciasComprasDemo => Set<TransferenciaCompraDemo>();
         public DbSet<BilleteraHabilitada> BilleteraHabilitada { get; set; } = default!;
         public DbSet<InstruccionCadena> InstruccionCadena { get; set; } = default!;
         public DbSet<TransaccionCadena> TransaccionCadena { get; set; } = default!;
@@ -19,6 +20,8 @@ namespace Tokenizacion.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<TransferenciaCompraDemo>().HasIndex(t => new { t.InmuebleId, t.Estado });
+
             modelBuilder.Entity<Billetera>(entidad =>
             {
                 entidad.ToTable(tabla =>

@@ -35,6 +35,15 @@ public class TokenizacionInmueblesController(TenantContext tenant, TokenizacionC
             };
         }, ct);
 
+    [HttpPost("Reconciliar", Name = "ReconciliarEmisionInmueble")]
+    public Task<IActionResult> PostReconciliar(Guid inmuebleId, CancellationToken ct) =>
+        ConAccesoAsync(async _ =>
+        {
+            await silo.EjecutarAsync(tenant.TenantId, context, ct);
+            var resultado = await emisor.ReconciliarAsync(tenant.TenantId, inmuebleId, ct);
+            return resultado is null ? NotFound() : Ok(resultado);
+        }, ct);
+
     [HttpGet("Buscar", Name = "BuscarEmisionInmueble")]
     public Task<IActionResult> GetBuscar(Guid inmuebleId, CancellationToken ct) =>
         ConAccesoAsync(async _ =>

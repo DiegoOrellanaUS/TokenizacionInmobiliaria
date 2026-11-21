@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 [Route("api/[controller]")]
 [ApiController]
 public class SubscripcionesController(AdminContext context, AprovisionarTenant aprovisionador,
-    IWebHostEnvironment environment) : ControllerBase
+    IWebHostEnvironment environment, SesionDemo sesiones) : ControllerBase
 {
     private const string Proveedor = "PILOTO";
 
@@ -49,8 +49,13 @@ public class SubscripcionesController(AdminContext context, AprovisionarTenant a
     [HttpPost("crear", Name = "CrearSubscripcion")]
     public async Task<IActionResult> PostSubscripcion(RegistroSubscripcion registro, CancellationToken ct)
     {
-        if (!environment.IsDevelopment())
+        var piloto = environment.IsEnvironment("Piloto");
+        if (!piloto && !environment.IsDevelopment())
             return NotFound();
+
+        if ((piloto || Request.Headers.ContainsKey("Authorization")) &&
+            (!sesiones.Leer(HttpContext, out var usuarioSesion) || usuarioSesion != registro.UsuarioId))
+            return StatusCode(StatusCodes.Status403Forbidden);
 
         var codigo = registro.CodigoPlan.Trim();
         var referencia = registro.ReferenciaPago.Trim();

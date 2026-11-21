@@ -10,8 +10,7 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
 {
     private static readonly (string Codigo, string Nombre, string Url, bool RequiereClaveInterna)[] Servicios =
     [
-        ("archivos", "Archivos", "https://localhost:7343", false),
-        ("expedientes", "Expedientes", "https://localhost:7173", false),
+
         ("inmuebles", "InmueblesOperacion", "https://localhost:7311", true),
         ("tokenizacion", "Tokenizacion", "https://localhost:7314", true)
     ];
@@ -34,9 +33,8 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
     {
         var json = await AsignacionesTitular(tenantId).Select(r => r.silos_por_servicio).SingleAsync(ct);
         var estados = LeerSilos(json);
-        foreach (var servicio in Servicios)
-            estados.TryAdd(servicio.Codigo, "PENDIENTE");
-        return estados;
+        return Servicios.ToDictionary(servicio => servicio.Codigo,
+            servicio => estados.GetValueOrDefault(servicio.Codigo, "PENDIENTE"));
     }
 
     public async Task<bool> Ejecutar(Guid tenantId, CancellationToken ct)

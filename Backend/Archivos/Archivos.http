@@ -1,6 +1,0 @@
-@Archivos_HostAddress = https://localhost:7343
-
-GET {{Archivos_HostAddress}}/openapi/v1.json
-Accept: application/json
-
-###

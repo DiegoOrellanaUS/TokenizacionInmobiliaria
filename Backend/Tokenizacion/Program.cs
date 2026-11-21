@@ -28,6 +28,7 @@ builder.Services.AddDbContext<TokenizacionContext>((services, options) =>
 builder.Services.AddSingleton<StellarCli>();
 builder.Services.AddSingleton<PrepararSiloTokenizacion>();
 builder.Services.AddScoped<EmitirInmueble>();
+builder.Services.AddScoped<TransferirCompraDemo>();
 builder.Services.AddHttpClient("AdminTokenizacion", client =>
 {
     client.BaseAddress = new Uri((builder.Configuration["Tokenizacion:AdminUrl"] ?? "https://localhost:7266").TrimEnd('/') + "/");
@@ -54,7 +55,9 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsEnvironment("Piloto"))
+    app.UseHttpsRedirection();
+app.MapGet("/salud", () => Results.Ok());
 app.UseMiddleware<TenantMiddleware>();
 app.UseAuthorization();
 

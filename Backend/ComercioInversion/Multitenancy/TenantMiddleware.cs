@@ -9,7 +9,11 @@ namespace ComercioInversion.Multitenancy
         }
         public async Task InvokeAsync(HttpContext http, TenantContext tenant)
         {
-            if (!http.Request.Path.StartsWithSegments("/api"))
+            if (!http.Request.Path.StartsWithSegments("/api") ||
+                http.Request.Path.StartsWithSegments("/api/Compras") ||
+                HttpMethods.IsGet(http.Request.Method) &&
+                (http.Request.Path.StartsWithSegments("/api/Ofertas/Catalogo") ||
+                 http.Request.Path.StartsWithSegments("/api/Ofertas/Buscar")))
             {
                 await next(http);
                 return;

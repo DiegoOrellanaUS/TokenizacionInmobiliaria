@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
 using Adminstracion.Data;
+using Microsoft.AspNetCore.RateLimiting;
 using Adminstracion.Dominio;
 using Adminstracion.DTOs;
 using Adminstracion.Servicios;
@@ -10,7 +13,7 @@ using Npgsql;
 [Route("api/[controller]")]
 [ApiController]
 public class UsuariosController(AdminContext context, AprovisionarTenant aprovisionador,
-    IPasswordHasher<Usuario> passwordHasher) : ControllerBase
+    IPasswordHasher<Usuario> passwordHasher, IWebHostEnvironment environment, IConfiguration configuration) : ControllerBase
 {
     private IQueryable<Usuario> Usuarios() => context.Usuario.AsNoTracking();
 
@@ -72,8 +75,18 @@ public class UsuariosController(AdminContext context, AprovisionarTenant aprovis
     }
 
     [HttpPost("crear", Name = "CrearUsuario")]
+    [EnableRateLimiting("cuentas")]
     public async Task<IActionResult> PostUsuario(RegistroUsuario registro, CancellationToken ct)
     {
+        if (environment.IsEnvironment("Piloto"))
+        {
+            var codigo = configuration["Piloto:CodigoInvitacion"];
+            if (codigo is null || registro.Invitacion is null ||
+                !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(codigo), Encoding.UTF8.GetBytes(registro.Invitacion)))
+                return StatusCode(StatusCodes.Status403Forbidden, "El código de invitación no es válido.");
+            if (registro.Contrasenia.Length < 12)
+                return BadRequest("Usa una contraseña de al menos 12 caracteres.");
+        }
         var ci = registro.CI.Trim();
         var nombre = registro.Nombre.Trim();
         var correo = registro.CorreoElectronico.Trim().ToLowerInvariant();

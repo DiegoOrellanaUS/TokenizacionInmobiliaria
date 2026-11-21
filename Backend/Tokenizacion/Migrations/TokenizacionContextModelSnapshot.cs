@@ -406,6 +406,44 @@ namespace Tokenizacion.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tokenizacion.Dominio.TransferenciaCompraDemo", b =>
+                {
+                    b.Property<Guid>("CompraId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Billetera")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CompradorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Hash")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("InmuebleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("Ledger")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Sobre")
+                        .HasColumnType("text");
+
+                    b.Property<long>("Unidades")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("CompraId");
+
+                    b.HasIndex("InmuebleId", "Estado");
+
+                    b.ToTable("transferencia_compra_demo", "tokenizacion");
+                });
+
             modelBuilder.Entity("Tokenizacion.Dominio.BilleteraHabilitada", b =>
                 {
                     b.HasOne("Tokenizacion.Dominio.ActivoCadena", "Activo")

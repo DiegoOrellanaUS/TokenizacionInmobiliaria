@@ -12,6 +12,7 @@ namespace InmueblesOperacion.Data
                 .SetBasePath(directory)
                 .AddJsonFile("appsettings.json")
                 .AddJsonFile("appsettings.Development.json", optional: true)
+                .AddUserSecrets<InmueblesOperacionContext>()
                 .AddEnvironmentVariables()
                 .Build();
 

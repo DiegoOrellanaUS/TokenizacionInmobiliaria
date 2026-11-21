@@ -28,7 +28,38 @@ public sealed partial class StellarCli
         else if (linea.Value.Saldo != 0 || linea.Value.Limite != cantidad)
             throw new StellarRequisitoException("La línea de confianza del inmueble no coincide con la emisión pendiente.");
 
-        var firmante = AliasEmisor(inmuebleId);
+        return await FirmarPagoAsync(tenantId, AliasEmisor(inmuebleId), activo, distribuidora, cantidadCli, ct);
+    }
+
+    public async Task<(string Hash, string Sobre, string Billetera)?> PrepararTransferenciaCompra(
+        Guid tenantId, Guid inmuebleId, Guid compradorId, string codigo, string emisor, string distribuidora,
+        long cantidad, CancellationToken ct)
+    {
+        var activo = $"{codigo}:{emisor}";
+        var firmante = AliasDistribuidora(inmuebleId);
+        if (await ObtenerDireccionAsync(tenantId, firmante, ct) != distribuidora)
+            throw new StellarRequisitoException("La cuenta distribuidora no coincide con la del inmueble.");
+        var origen = await ConsultarLineaAsync(tenantId, activo, distribuidora, ct);
+        if (origen is null || origen.Value.Saldo < cantidad)
+            return null;
+
+        var aliasComprador = $"comprador-{compradorId:N}";
+        var comprador = await PrepararCuentaAsync(tenantId, aliasComprador, ct);
+        var destino = await ConsultarLineaAsync(tenantId, activo, comprador, ct);
+        if (destino is null)
+            await EnviarAsync(tenantId, aliasComprador, ct, "change-trust",
+                "--line", activo, "--limit", long.MaxValue.ToString(CultureInfo.InvariantCulture));
+        else if (destino.Value.Limite - destino.Value.Saldo < cantidad)
+            return null;
+
+        var firmado = await FirmarPagoAsync(tenantId, firmante, activo, comprador,
+            cantidad.ToString(CultureInfo.InvariantCulture), ct);
+        return (firmado.Hash, firmado.Sobre, comprador);
+    }
+
+    private async Task<(string Hash, string Sobre)> FirmarPagoAsync(
+        Guid tenantId, string firmante, string activo, string distribuidora, string cantidadCli, CancellationToken ct)
+    {
         var sinFirma = await EjecutarAsync(tenantId, ct, null, "tx", "new", "payment",
             "--destination", distribuidora, "--asset", activo, "--amount", cantidadCli,
             "--source", firmante, "--network", Red, "--build-only");

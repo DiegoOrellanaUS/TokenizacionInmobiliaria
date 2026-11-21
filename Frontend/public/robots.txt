@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /espacio
+Disallow: /revision
+Disallow: /acceso
+Allow: /

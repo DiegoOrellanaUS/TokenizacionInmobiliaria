@@ -142,6 +142,10 @@ _Pvt_Extensions
 **/.paket/paket.exe
 paket-files/
 .fake/
+.env
+.env.*
+!.env.example
+.vercel/
 .idea/
 *.sln.iml
 .cr/

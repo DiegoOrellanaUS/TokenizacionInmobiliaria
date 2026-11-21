@@ -24,6 +24,34 @@ builder.Services.AddDbContext<ComercioInversionContext>((services, options) =>
     options.UseNpgsql(connectionBuilder.ConnectionString);
 });
 
+builder.Services.AddDbContext<CatalogoContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("CatalogoContext")));
+builder.Services.AddSingleton<PrepararCatalogo>();
+builder.Services.AddHostedService<LiquidarComprasDemo>();
+builder.Services.AddHttpClient("AdminCompraDemo", client =>
+{
+    client.BaseAddress = new Uri((builder.Configuration["Comercio:AdminUrl"] ?? "https://localhost:7266").TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient("LiquidacionDemo", client =>
+{
+    client.BaseAddress = new Uri((builder.Configuration["Comercio:TokenizacionUrl"] ?? "https://localhost:7314").TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(90);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+
+foreach (var (nombre, clave, direccion) in new[]
+{
+    ("TokensOferta", "Comercio:TokenizacionUrl", "https://localhost:7314"),
+    ("InmueblesOferta", "Comercio:InmueblesUrl", "https://localhost:7311")
+})
+{
+    builder.Services.AddHttpClient(nombre, client =>
+    {
+        client.BaseAddress = new Uri((builder.Configuration[clave] ?? direccion).TrimEnd('/') + "/");
+        client.Timeout = TimeSpan.FromSeconds(12);
+    }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+}
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
@@ -35,7 +63,9 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsEnvironment("Piloto"))
+    app.UseHttpsRedirection();
+app.MapGet("/salud", () => Results.Ok());
 app.UseMiddleware<TenantMiddleware>();
 app.UseAuthorization();
 

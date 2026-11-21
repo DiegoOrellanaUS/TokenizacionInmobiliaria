@@ -24,8 +24,18 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
         return emision is null ? null : Proyectar(emision);
     }
 
-    public async Task<ResultadoEmision> EjecutarAsync(Guid tenantId, Guid inmuebleId, Guid usuarioId, int cupo,
-        TokenizarInmueble solicitud, CancellationToken ct)
+    public Task<ResultadoEmision> EjecutarAsync(Guid tenantId, Guid inmuebleId, Guid usuarioId, int cupo,
+        TokenizarInmueble solicitud, CancellationToken ct) =>
+        ConBloqueoAsync(() => EmitirAsync(tenantId, inmuebleId, usuarioId, cupo, solicitud, ct), ct);
+
+    public Task<ResultadoEmision?> ReconciliarAsync(Guid tenantId, Guid inmuebleId, CancellationToken ct) =>
+        ConBloqueoAsync<ResultadoEmision?>(async () =>
+        {
+            var existente = await Emisiones().SingleOrDefaultAsync(e => e.inmueble_ref == inmuebleId, ct);
+            return existente is null ? null : await ContinuarAsync(tenantId, existente, ct);
+        }, ct);
+
+    private async Task<T> ConBloqueoAsync<T>(Func<Task<T>> operacion, CancellationToken ct)
     {
         await context.Database.OpenConnectionAsync(ct);
         try
@@ -34,7 +44,7 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
             await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_lock(67730290112711)", ct);
             try
             {
-                return await EmitirAsync(tenantId, inmuebleId, usuarioId, cupo, solicitud, ct);
+                return await operacion();
             }
             finally
             {
@@ -62,13 +72,18 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
             throw new StellarRequisitoException("El inmueble ya tiene una solicitud de emisión con otros datos.");
         }
 
+        return await ContinuarAsync(tenantId, emision, ct);
+    }
+
+    private async Task<ResultadoEmision> ContinuarAsync(Guid tenantId, EmisionInmueble emision, CancellationToken ct)
+    {
         if (emision.Instruccion.estado != Pendiente)
             return Proyectar(emision);
 
         if (emision.sobre_firmado is null)
         {
             var instruccion = emision.Instruccion;
-            var firmado = await stellar.FirmarPagoInmueble(tenantId, inmuebleId, instruccion.Activo.codigo,
+            var firmado = await stellar.FirmarPagoInmueble(tenantId, emision.inmueble_ref, instruccion.Activo.codigo,
                 instruccion.Activo.emisor, instruccion.Destino!.direccion, instruccion.cantidad_base!.Value, ct);
             emision.hash = firmado.Hash;
             emision.sobre_firmado = firmado.Sobre;

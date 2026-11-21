@@ -1,10 +1,10 @@
 # Registro y revisión de inmuebles
 
-Para iniciar el flujo, el propietario debe tener un tenant activo, el rol `TITULAR_TENANT` vigente y una suscripción activa para ese tenant. Admin comprueba las tres condiciones. Al contratar, Admin aprovisiona `inmuebles_operacion_{tenantId:N}` y `tokenizacion_{tenantId:N}` junto con Archivos y Expedientes. La suscripción nueva pasa a `ACTIVA` cuando los cuatro servicios responden `LISTO`. Si alguno está pendiente, repite el alta con el mismo plan, usuario y referencia de pago para completar el aprovisionamiento. Esto también permite preparar bases faltantes para una suscripción anterior.
+Para iniciar el flujo, el propietario debe tener un tenant activo, el rol `TITULAR_TENANT` vigente y una suscripción activa para ese tenant. Admin comprueba las tres condiciones. Al contratar, Admin aprovisiona `inmuebles_operacion_{tenantId:N}` y `tokenizacion_{tenantId:N}` como bases separadas por tenant. La suscripción nueva pasa a `ACTIVA` cuando ambos servicios responden `LISTO`. Si alguno está pendiente, repite el alta con el mismo plan, usuario y referencia de pago para completar el aprovisionamiento. Esto también permite preparar bases faltantes para una suscripción anterior.
 
 ## Configuración local
 
-- Inicia Admin, Inmuebles, Tokenización, Archivos, Expedientes y Gateway para hacer el flujo completo.
+- Inicia Admin, Inmuebles, Tokenización, Comercio y Gateway para hacer el flujo completo.
 - Configura el mismo valor privado de `Aprovisionamiento__ClaveInterna` en Admin, Inmuebles y Tokenización. Úsalo solo para la comunicación interna. Admin llama directamente a los servicios. Si cambias los puertos, ajusta `Aprovisionamiento__InmueblesOperacion` y `Aprovisionamiento__Tokenizacion` en Admin.
 - Configura la misma variable `Inmuebles__ClaveInterna` en Admin e Inmuebles con un valor privado. `Inmuebles__AdminUrl` en Inmuebles apunta a Admin. Su valor local predeterminado es `https://localhost:7266/`.
 - Para habilitar un revisor, asigna a su usuario un rol global vigente `REVISOR_INMUEBLE` o `SUPER_ADMIN` en Admin y agrega su UUID a la configuración de Admin, por ejemplo con `Inmuebles__Revisores__0`.

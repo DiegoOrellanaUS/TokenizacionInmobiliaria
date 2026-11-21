@@ -65,7 +65,7 @@ Esta tabla describe el diseño actual. La última columna indica qué lo reempla
 | Mensajería | SQS | | Eventos entre Tokenization, Inmuebles y Operación, Caja y Pagos, y Comercio e Inversión | EventBridge + SQS con outbox y DLQ (sección 7) |
 | Bases de datos | Una PostgreSQL por servicio; MongoDB en Global y Reportes | | | Una instancia RDS PostgreSQL, un esquema por servicio; DynamoDB para Reportes (sección 6) |
 
-Hoy los contenedores se construyen con Docker. El repositorio tiene los proyectos `Adminstracion`, `Archivos`, `Expedientes` y `Gateway`, todos en .NET 10. El proyecto `Gateway` (YARP) deja de usarse con API Gateway. La relación entre los demás proyectos y los servicios del diagrama está en la sección 14.
+Hoy los contenedores se construyen con Docker. El flujo local de Umbral usa `Adminstracion`, `InmueblesOperacion`, `Tokenizacion`, `ComercioInversion` y `Gateway`, todos en .NET 10. El proyecto `Gateway` (YARP) deja de usarse con API Gateway. La relación entre los demás proyectos y los servicios del diagrama está en la sección 14.
 
 ### 1.2 Problemas del diseño actual y su solución
 
@@ -812,7 +812,7 @@ Contratos, avalúos, documentos de inmuebles, documentos de KYC y reportes gener
 - **GuardDuty Malware Protection for S3** escanea cada archivo subido por usuarios. Los servicios solo procesan archivos con la etiqueta de escaneo limpio.
 - Reglas de ciclo de vida para mover documentos antiguos a clases de almacenamiento más baratas. La retención de documentos legales y de KYC depende de la norma boliviana (**Asesoría legal**). Si la norma exige que no se puedan borrar, se activa **S3 Object Lock**.
 
-El proyecto `Archivos` del repositorio probablemente corresponde a esta función (sección 14).
+En el flujo local, `InmueblesOperacion` administra los documentos de respaldo de los inmuebles.
 
 ## 7. Eventos y consistencia
 
@@ -1017,7 +1017,7 @@ No incluye AgentCore ni el modelo de lenguaje, que se cobran por uso, ni dominio
 | # | Pregunta | Afecta a |
 |---|---|---|
 | P1 | ¿Qué consultas usan hoy las pantallas y los reportes sobre MongoDB? Definen las llaves e índices de DynamoDB. | Sección 6.5 |
-| P2 | ¿Cómo se relacionan los proyectos del repositorio (`Adminstracion`, `Archivos`, `Expedientes`) con los servicios del diagrama? | Secciones 1 y 4 |
+| P2 | ¿Cómo se relacionan los proyectos activos del repositorio con los servicios del diagrama? | Secciones 1 y 4 |
 | P3 | ¿Se aceptan los cambios de frontera: KYC a Admin, distribuciones a Caja y Pagos, Global absorbido por Reportes? | Secciones 4 y 6.4 |
 | P4 | ¿Un solo user pool de Cognito con grupos, o un pool separado para operadores? | Sección 5 |
 | P5 | ¿Algún tenant necesita aislamiento físico de datos por contrato? | Sección 6.6 |

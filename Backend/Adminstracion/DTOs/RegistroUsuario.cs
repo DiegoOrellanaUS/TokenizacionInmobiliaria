@@ -15,7 +15,10 @@ namespace Adminstracion.DTOs
         [Required, EmailAddress]
         public string CorreoElectronico { get; set; } = null!;
 
-        [Required]
+        [Required, StringLength(128)]
         public string Contrasenia { get; set; } = null!;
+
+        [StringLength(128)]
+        public string? Invitacion { get; set; }
     }
 }

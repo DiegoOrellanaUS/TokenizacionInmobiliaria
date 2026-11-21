@@ -79,6 +79,10 @@ export async function api<T>(path: string, options: {
   return (raw ? result : undefined) as T
 }
 
+export function fotoDeOferta(id: string) {
+  return base + '/api/Ofertas/Imagen/' + encodeURIComponent(id)
+}
+
 export async function descargar(path: string, sesion: Sesion | null) {
   const headers = new Headers()
   if (sesion) headers.set('Authorization', 'Bearer ' + sesion.token)

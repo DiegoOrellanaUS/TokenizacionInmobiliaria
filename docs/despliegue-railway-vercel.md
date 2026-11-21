@@ -85,6 +85,7 @@ El catálogo usa otra base en el mismo servidor. Los contextos crean sus bases c
 ConnectionStrings__CatalogoContext=Host=${{Postgres.PGHOST}};Port=${{Postgres.PGPORT}};Database=umbral_catalogo;Username=${{Postgres.PGUSER}};Password=${{Postgres.PGPASSWORD}}
 Comercio__AdminUrl=http://${{admin.RAILWAY_PRIVATE_DOMAIN}}:8080
 Comercio__InmueblesUrl=http://${{inmuebles.RAILWAY_PRIVATE_DOMAIN}}:8080
+Inmuebles__ClaveEventos=${{shared.CLAVE_EVENTOS_INMUEBLES}}
 Comercio__TokenizacionUrl=http://${{tokenizacion.RAILWAY_PRIVATE_DOMAIN}}:8080
 Comercio__ClaveLiquidacionDemo=${{shared.CLAVE_LIQUIDACION}}
 ```

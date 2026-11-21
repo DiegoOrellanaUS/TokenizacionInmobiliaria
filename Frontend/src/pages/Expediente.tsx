@@ -98,6 +98,7 @@ export function Expediente() {
 
   const i = expediente.inmueble
   const documento = expediente.documentos.find(d => d.clase === 'TITULARIDAD')
+  const tieneFoto = expediente.documentos.some(d => d.clase === 'FOTO_PUBLICA')
   const puedeEnviar = expediente.titulares.length > 0 && Boolean(documento)
   return <section className="inner">
     <Link className="back-link" to="/espacio">← Volver al espacio</Link>
@@ -147,7 +148,7 @@ export function Expediente() {
         </section>
         <section className="panel">
           <h2>Documentos de respaldo</h2>
-          <ul className="plain-list">{expediente.documentos.map(d => <li key={d.documentoId + ':' + d.version}>
+          <ul className="plain-list">{expediente.documentos.filter(d => d.clase !== 'FOTO_PUBLICA').map(d => <li key={d.documentoId + ':' + d.version}>
             <button className="text-button" type="button" onClick={() => void action.ejecutar(() =>
               descargar(`${ruta}/Documentos/${d.documentoId}/Versiones/${d.version}`, sesion))}>
               <FileText size={16}/> {d.clase} · versión {d.version}
@@ -163,6 +164,22 @@ export function Expediente() {
               <input name="archivo" type="file" required />
             </Campo>
             <Button disabled={action.busy} variant="secondary">{documento ? 'Guardar nueva versión' : 'Adjuntar respaldo'}</Button>
+          </form>}
+        </section>
+        <section className="panel">
+          <h2>Foto pública de la oferta</h2>
+          <p>Se muestra en el catálogo y al compartir la oferta publicada.</p>
+          {tieneFoto && <p role="status">Foto guardada.</p>}
+          {(editable || puedeEmitir) && <form className="form-stack" onSubmit={e => {
+            e.preventDefault()
+            const form = new FormData(e.currentTarget)
+            form.append('clase', 'FOTO_PUBLICA')
+            guardar(ruta + '/Documentos', 'POST', form)
+          }}>
+            <Campo label="Foto de referencia (JPG, PNG, WebP, hasta 2 MiB)">
+              <input name="archivo" type="file" accept="image/jpeg,image/png,image/webp" required/>
+            </Campo>
+            <Button disabled={action.busy} variant="secondary">{tieneFoto ? 'Cambiar foto' : 'Guardar foto'}</Button>
           </form>}
         </section>
       </div>

@@ -11,7 +11,7 @@ namespace ComercioInversion.Controllers;
 [ApiController]
 [Route("api/Ofertas")]
 public sealed class OfertasController(CatalogoContext context, PrepararCatalogo preparar,
-    TenantContext tenant, IHttpClientFactory clients) : ControllerBase
+    TenantContext tenant, IHttpClientFactory clients, IConfiguration configuration) : ControllerBase
 {
     [HttpGet("Catalogo", Name = "CatalogoInmobiliario")]
     public async Task<ActionResult<List<DatosOferta>>> Catalogo(CancellationToken ct)
@@ -26,6 +26,51 @@ public sealed class OfertasController(CatalogoContext context, PrepararCatalogo 
         await preparar.Ejecutar(context, ct);
         var oferta = await Publicas(id).SingleOrDefaultAsync(ct);
         return oferta is null ? NotFound() : Ok(oferta);
+    }
+
+    [HttpGet("Imagen/{id:guid}")]
+    [HttpHead("Imagen/{id:guid}")]
+    public async Task<IActionResult> Imagen(Guid id, CancellationToken ct)
+    {
+        var clave = configuration["Inmuebles:ClaveEventos"];
+        if (string.IsNullOrWhiteSpace(clave))
+            return StatusCode(503);
+
+        await preparar.Ejecutar(context, ct);
+        var oferta = await (from o in context.Ofertas.AsNoTracking()
+                            where o.Id == id
+                            select new { o.TenantId, o.InmuebleId }).SingleOrDefaultAsync(ct);
+        if (oferta is null)
+            return NotFound();
+
+        var esHead = HttpMethods.IsHead(Request.Method);
+        try
+        {
+            using var client = clients.CreateClient("InmueblesOferta");
+            using var consulta = new HttpRequestMessage(esHead ? HttpMethod.Head : HttpMethod.Get,
+                $"interno/tenants/{oferta.TenantId:D}/inmuebles/{oferta.InmuebleId:D}/foto-publica");
+            consulta.Headers.Add("X-Inmuebles-Eventos", clave);
+            using var respuesta = await client.SendAsync(consulta, ct);
+            if (respuesta.StatusCode == HttpStatusCode.NotFound)
+                return NotFound();
+            if (!respuesta.IsSuccessStatusCode)
+                return StatusCode(503);
+
+            Response.Headers.CacheControl = "public, max-age=60";
+            if (esHead)
+                return Ok();
+
+            var tipo = respuesta.Content.Headers.ContentType?.MediaType;
+            if (tipo is not ("image/jpeg" or "image/png" or "image/webp"))
+                return StatusCode(502);
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return File(await respuesta.Content.ReadAsByteArrayAsync(ct), tipo);
+        }
+        catch (Exception ex) when (ex is HttpRequestException ||
+            ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            return StatusCode(503);
+        }
     }
 
     [HttpPost("{inmuebleId:guid}/Publicar", Name = "PublicarOfertaInmueble")]

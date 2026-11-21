@@ -41,8 +41,8 @@ public partial class InmueblesController
         if (archivo.Length is <= 0 or > LimiteArchivo)
             return BadRequest("El tamaño del archivo debe ser mayor que cero y de hasta 5 MiB.");
 
-        if (documentoId is null && clase is not (DocumentoTitularidad or "FOTO" or "OTRO"))
-            return BadRequest("La clase debe ser TITULARIDAD, FOTO u OTRO.");
+        if (documentoId is null && clase is not (DocumentoTitularidad or FotoPublica.Clase or "FOTO" or "OTRO"))
+            return BadRequest("La clase debe ser TITULARIDAD, FOTO_PUBLICA, FOTO u OTRO.");
 
         using var memoria = new MemoryStream((int)archivo.Length);
         await archivo.CopyToAsync(memoria, ct);
@@ -52,8 +52,21 @@ public partial class InmueblesController
         var inmueble = await Visibles().SingleOrDefaultAsync(i => i.id == id, ct);
         if (inmueble is null)
             return NotFound();
-        if (!Editable(inmueble))
-            return Conflict("Los archivos solo se pueden adjuntar o reemplazar en borrador o con observaciones.");
+        if (documentoId != null)
+        {
+            clase = await (from vinculo in context.InmuebleDocumento
+                           where vinculo.inmueble_id == id && vinculo.documento_id == documentoId &&
+                                 vinculo.fecha_eliminacion == null
+                           select vinculo.Documento.clase).SingleOrDefaultAsync(ct);
+            if (clase is null)
+                return NotFound();
+        }
+
+        var esFoto = clase == FotoPublica.Clase;
+        if (!Editable(inmueble) && !(esFoto && inmueble.estado_revision == "APROBADO"))
+            return Conflict("El expediente no permite modificar ese documento en su estado actual.");
+        if (esFoto && (bytes.Length > FotoPublica.MaximoBytes || FotoPublica.Tipo(bytes) is null))
+            return BadRequest("La foto pública debe ser JPG, PNG o WebP y pesar como máximo 2 MiB.");
 
         var ahora = DateTimeOffset.UtcNow;
         var version = 1;

@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, MapPin, Plus } from 'lucide-react'
-import { moneda, type Oferta } from '../api'
+import { fotoDeOferta, moneda, type Oferta } from '../api'
 import { Estado } from './atoms'
 
 export function PageTitle({ title, description, children }: { title: string; description?: string; children?: ReactNode }) {
@@ -18,12 +18,21 @@ export function Empty({ title, description, href, label }: { title: string; desc
   </section>
 }
 
+export function FotoOferta({ oferta, detalle = false }: { oferta: Oferta; detalle?: boolean }) {
+  const [usarReferencia, setReferencia] = useState(false)
+  return <>
+    <img className={detalle ? 'detail-image' : undefined} src={usarReferencia ? '/imagenes/arquitectura.jpg' : fotoDeOferta(oferta.id)}
+      alt={usarReferencia ? 'Fotografía de referencia arquitectónica' : 'Foto de ' + oferta.nombre}
+      loading={detalle ? 'eager' : 'lazy'} onError={() => setReferencia(true)}/>
+    {usarReferencia && <span className="image-label">Imagen referencial</span>}
+  </>
+}
+
 export function OfertaCard({ oferta }: { oferta: Oferta }) {
   return <article className="offer-card">
     <div className="offer-image">
-      <img src="/imagenes/arquitectura.jpg" alt="Fotografía de referencia arquitectónica" loading="lazy" />
+      <FotoOferta key={oferta.id} oferta={oferta}/>
       <Estado value="PUBLICADA" />
-      <span className="image-label">Imagen referencial</span>
     </div>
     <div className="offer-body">
       <p className="location"><MapPin size={15}/>{oferta.ciudad}</p>

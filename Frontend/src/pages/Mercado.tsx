@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { fecha, moneda, type Oferta } from '../api'
 import { useDatos } from '../hooks'
 import { ErrorBox, Estado } from '../ui/atoms'
-import { Empty, OfertaCard, PageTitle } from '../ui/molecules'
+import { Empty, FotoOferta, OfertaCard, PageTitle } from '../ui/molecules'
 import { CompraOferta } from './Portafolio'
 
 export function Mercado() {
@@ -77,8 +77,7 @@ export function DetalleOferta() {
       <PageTitle title={oferta.nombre} description={`${oferta.tipo} · ${oferta.ciudad}`}><Estado value="PUBLICADA"/></PageTitle>
       <div className="detail-grid">
         <figure className="relative m-0 h-fit">
-          <img className="detail-image" src="/imagenes/arquitectura.jpg" alt="Fotografía de referencia arquitectónica"/>
-          <figcaption className="image-label">Imagen referencial</figcaption>
+          <FotoOferta key={oferta.id} oferta={oferta} detalle/>
         </figure>
         <aside className="flow-stack"><section className="panel"><h2>Datos de la oferta</h2>
           <dl className="facts"><div><dt>Precio por unidad</dt><dd>{moneda(oferta.precio, oferta.moneda)}</dd></div>

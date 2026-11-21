@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using InmueblesOperacion.Data;
+using InmueblesOperacion.Dominio;
 using InmueblesOperacion.Multitenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,38 @@ public class EventosInmueblesController(TenantContext tenant, IServiceProvider s
                                where i.id == inmuebleId && i.estado == "ACTIVO"
                                select new { InmuebleId = i.id, EstadoRevision = i.estado_revision }).SingleOrDefaultAsync(ct);
             return ficha is null ? NotFound() : Ok(ficha);
+        }
+        catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.InvalidCatalogName or PostgresErrorCodes.UndefinedTable)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpGet("{inmuebleId:guid}/foto-publica")]
+    [HttpHead("{inmuebleId:guid}/foto-publica")]
+    public async Task<IActionResult> GetFotoPublica(Guid tenantId, Guid inmuebleId, CancellationToken ct)
+    {
+        if (!EsConsumidor() || tenantId == Guid.Empty || inmuebleId == Guid.Empty)
+            return NotFound();
+
+        tenant.TenantId = tenantId;
+        var context = services.GetRequiredService<InmueblesOperacionContext>();
+        var fotos = from i in context.Inmueble.AsNoTracking()
+                    join d in context.InmuebleDocumento on i.id equals d.inmueble_id
+                    join v in context.DocumentoVersion on d.documento_id equals v.documento_id
+                    where i.id == inmuebleId && i.estado == "ACTIVO" && i.estado_revision == "APROBADO" &&
+                          d.fecha_eliminacion == null && d.Documento.clase == FotoPublica.Clase &&
+                          d.Documento.estado == "ACTIVO" && v.contenido != null
+                    orderby d.fecha_creacion descending, d.documento_id, v.version descending
+                    select v;
+
+        try
+        {
+            if (HttpMethods.IsHead(Request.Method))
+                return await fotos.AnyAsync(ct) ? Ok() : NotFound();
+            var bytes = await fotos.Select(v => v.contenido).FirstOrDefaultAsync(ct);
+            var tipo = bytes is null ? null : FotoPublica.Tipo(bytes);
+            return tipo is null ? NotFound() : File(bytes!, tipo);
         }
         catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.InvalidCatalogName or PostgresErrorCodes.UndefinedTable)
         {

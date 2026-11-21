@@ -11,9 +11,10 @@ namespace ComercioInversion.Multitenancy
         {
             if (!http.Request.Path.StartsWithSegments("/api") ||
                 http.Request.Path.StartsWithSegments("/api/Compras") ||
-                HttpMethods.IsGet(http.Request.Method) &&
+                (HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method)) &&
                 (http.Request.Path.StartsWithSegments("/api/Ofertas/Catalogo") ||
-                 http.Request.Path.StartsWithSegments("/api/Ofertas/Buscar")))
+                 http.Request.Path.StartsWithSegments("/api/Ofertas/Buscar") ||
+                 http.Request.Path.StartsWithSegments("/api/Ofertas/Imagen")))
             {
                 await next(http);
                 return;

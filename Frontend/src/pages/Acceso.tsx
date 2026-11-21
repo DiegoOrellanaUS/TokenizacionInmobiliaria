@@ -24,7 +24,7 @@ export function Acceso() {
         method: 'POST', body: {
           ci: fields.get('ci'), nombre: fields.get('nombre'), apellidos: fields.get('apellidos'),
           correoElectronico: correo, contrasenia: contrasenia ?? crypto.randomUUID() + '!Dz',
-          invitacion: piloto ? fields.get('invitacion') : undefined,
+
         },
       })
       const sesion = await entrar(correo, contrasenia)
@@ -52,7 +52,7 @@ export function Acceso() {
         <Campo label="Correo electrónico"><input name="correo" type="email" required autoComplete="email" placeholder="nombre@correo.com"/></Campo>
         {piloto && <Campo label="Contraseña"><input name="contrasenia" type="password" minLength={12} maxLength={128}
           autoComplete={registro ? 'new-password' : 'current-password'} required/></Campo>}
-        {piloto && registro && <Campo label="Código de invitación"><input name="invitacion" maxLength={128} required/></Campo>}
+
         <Button disabled={action.busy}>{registro ? 'Crear perfil' : 'Continuar'} <ArrowRight size={17}/></Button>
         <ErrorBox text={action.error}/>
       </form>

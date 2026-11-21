@@ -15,8 +15,7 @@ public static class InicializarPiloto
     public static async Task PrepararAsync(WebApplication app)
     {
         var config = app.Configuration;
-        if (config["Piloto:CodigoInvitacion"] is not { Length: >= 16 and <= 128 })
-            throw new InvalidOperationException("Configura Piloto:CodigoInvitacion con 16 a 128 caracteres.");
+
 
         var correo = config["Piloto:RevisorEmail"]?.Trim().ToLowerInvariant();
         var contrasenia = config["Piloto:RevisorContrasenia"];

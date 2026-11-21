@@ -38,7 +38,7 @@ Crea cuatro variables compartidas de Railway con valores aleatorios distintos. U
 
 ### admin
 
-Monta un volumen en `/data` y configura los siguientes valores. El inicio en modo Piloto aplica las migraciones de Admin y prepara el plan y la cuenta revisora. Dale al revisor una contraseña única de 12 a 128 caracteres. Distribuye el código de invitación solo a quienes deban probar el registro.
+Monta un volumen en `/data` y configura los siguientes valores. El inicio en modo Piloto aplica las migraciones de Admin y prepara el plan y la cuenta revisora. Dale al revisor una contraseña única de 12 a 128 caracteres. El registro del piloto está abierto.
 
 ```dotenv
 ConnectionStrings__ArchivosMultitenenciaAdministracionContext=Host=${{Postgres.PGHOST}};Port=${{Postgres.PGPORT}};Database=${{Postgres.PGDATABASE}};Username=${{Postgres.PGUSER}};Password=${{Postgres.PGPASSWORD}}
@@ -47,7 +47,7 @@ Aprovisionamiento__Tokenizacion=http://${{tokenizacion.RAILWAY_PRIVATE_DOMAIN}}:
 Aprovisionamiento__ClaveInterna=${{shared.CLAVE_APROVISIONAMIENTO}}
 Inmuebles__ClaveInterna=${{shared.CLAVE_ACCESO_INMUEBLES}}
 SesionDemo__DirectorioClaves=/data/sesion
-Piloto__CodigoInvitacion=REEMPLAZAR_CON_UN_CODIGO_DE_16_A_128_CARACTERES
+
 Piloto__RevisorEmail=REEMPLAZAR_CON_EL_CORREO_DEL_REVISOR
 Piloto__RevisorContrasenia=REEMPLAZAR_CON_UNA_CONTRASENIA_UNICA
 ```
@@ -111,12 +111,12 @@ Usa **Node.js 24.x** con el `package-lock.json` versionado. El comando es `npm r
 
 En Vercel, `Frontend/vercel.json` reenvía `/api/*` a `https://gateway-production-b9371022.up.railway.app`. El frontend publicado usa ese proxy y habilita el acceso con contraseña por defecto.
 
-Si quieres apuntar el navegador directamente a otro Gateway, configura `VITE_API_URL` con su dominio público HTTPS en **Environment Variables** y vuelve a desplegar. Configura también CORS en ese Gateway. Las variables con prefijo `VITE_` son públicas. Guarda el código de invitación, las contraseñas y las claves internas en Railway.
+Si quieres apuntar el navegador directamente a otro Gateway, configura `VITE_API_URL` con su dominio público HTTPS en **Environment Variables** y vuelve a desplegar. Configura también CORS en ese Gateway. Las variables con prefijo `VITE_` son públicas. Guarda las contraseñas y las claves internas en Railway.
 
 ## 5. Verificar el piloto
 
 1. Abre `https://tu-gateway.up.railway.app/salud` y luego `/api/Ofertas/Catalogo`. La primera ruta debe responder 200. El catálogo puede comenzar vacío.
 2. Abre el dominio Vercel y prueba entrar directamente a `/portafolio`. La aplicación debe abrir y redirigir al acceso si no hay sesión.
-3. Registra una cuenta con la invitación, selecciona el plan piloto, crea el inmueble y entra con el usuario revisor desde otra sesión. Aprueba el expediente, emite, publica y completa una compra de prueba desde una segunda cuenta.
+3. Registra una cuenta con una contraseña, selecciona el plan piloto, crea el inmueble y entra con el usuario revisor desde otra sesión. Aprueba el expediente, emite, publica y completa una compra de prueba desde una segunda cuenta.
 
 El piloto usa una base nueva y Stellar Testnet. Para trasladar ofertas ya emitidas desde otra instalación hay que conservar sus bases y las identidades de Stellar correspondientes.

@@ -14,10 +14,10 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   const correoRevisor = process.env.E2E_REVIEWER_EMAIL
   if (!correoRevisor) throw new Error('Configura E2E_REVIEWER_EMAIL con un revisor local habilitado.')
   const gateway = process.env.E2E_API_URL || 'https://localhost:7339'
-  const invitacion = process.env.E2E_INVITACION
+
   const contrasenia = process.env.E2E_CONTRASENIA
   const contraseniaRevisor = process.env.E2E_CONTRASENIA_REVISOR
-  if (invitacion && (!contrasenia || !contraseniaRevisor))
+  if (process.env.VITE_PILOTO === 'true' && (!contrasenia || !contraseniaRevisor))
     throw new Error('Configura las contraseñas de prueba para el piloto.')
   const serie = Date.now().toString()
   const nombre = 'Casa Prado · ' + serie.slice(-6)
@@ -28,10 +28,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   await page.getByLabel('Apellidos').fill('Demo')
   await page.getByLabel('Documento de identidad').fill(serie)
   await page.getByLabel('Correo electrónico').fill(correo)
-  if (invitacion && contrasenia) {
-    await page.getByLabel('Contraseña').fill(contrasenia)
-    await page.getByLabel('Código de invitación').fill(invitacion)
-  }
+  if (contrasenia) await page.getByLabel('Contraseña').fill(contrasenia)
   await page.getByRole('button', { name: 'Crear perfil' }).click()
   await page.getByRole('link', { name: 'Ver planes' }).click()
   const plan = process.env.E2E_PLAN
@@ -151,10 +148,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
     await comprador.getByLabel('Nombre', { exact: true }).fill('Cris')
     await comprador.getByLabel('Documento de identidad').fill('C' + serie)
     await comprador.getByLabel('Correo electrónico').fill(correoComprador)
-    if (invitacion && contrasenia) {
-      await comprador.getByLabel('Contraseña').fill(contrasenia)
-      await comprador.getByLabel('Código de invitación').fill(invitacion)
-    }
+    if (contrasenia) await comprador.getByLabel('Contraseña').fill(contrasenia)
     await comprador.getByRole('button', { name: 'Crear perfil' }).click()
     await comprador.getByLabel('Unidades a comprar').fill('2')
     const ordenCreada = comprador.waitForResponse(r => r.url().includes('/api/Compras/Ofertas/') && r.request().method() === 'POST')

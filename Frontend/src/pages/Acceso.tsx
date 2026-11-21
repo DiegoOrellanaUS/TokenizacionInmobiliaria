@@ -6,7 +6,7 @@ import { useAccion } from '../hooks'
 import { useSesion } from '../session'
 import { Button, Campo, ErrorBox } from '../ui/atoms'
 
-const piloto = import.meta.env.VITE_PILOTO === 'true'
+const piloto = (import.meta.env.VITE_PILOTO ?? String(import.meta.env.PROD)) === 'true'
 
 export function Acceso() {
   const [registro, editar] = useState(false)

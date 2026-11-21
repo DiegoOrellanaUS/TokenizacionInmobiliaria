@@ -109,14 +109,9 @@ En Vercel usa **Add New → Project**, importa el mismo repositorio y selecciona
 
 Usa **Node.js 24.x** con el `package-lock.json` versionado. El comando es `npm run build` y la salida es `dist`. `Frontend/vercel.json` ya configura las rutas del SPA, como `/ofertas/...` y `/portafolio`.
 
-En **Environment Variables** de Vercel configura:
+En Vercel, `Frontend/vercel.json` reenvía `/api/*` a `https://gateway-production-b9371022.up.railway.app`. El frontend publicado usa ese proxy y habilita el acceso con contraseña por defecto.
 
-```dotenv
-VITE_API_URL=https://tu-gateway.up.railway.app
-VITE_PILOTO=true
-```
-
-Asigna estas variables al entorno que vayas a desplegar. Vite incorpora sus valores durante la compilación. Si cambian, aplica un nuevo despliegue. Las variables con prefijo `VITE_` son públicas, así que el código de invitación, contraseñas y claves internas se mantienen en Railway.
+Si quieres apuntar el navegador directamente a otro Gateway, configura `VITE_API_URL` con su dominio público HTTPS en **Environment Variables** y vuelve a desplegar. Configura también CORS en ese Gateway. Las variables con prefijo `VITE_` son públicas. Guarda el código de invitación, las contraseñas y las claves internas en Railway.
 
 ## 5. Verificar el piloto
 

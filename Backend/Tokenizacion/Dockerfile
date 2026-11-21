@@ -16,7 +16,7 @@ RUN set -eu; \
     esac; \
     archivo="stellar-cli-30.0.1-${arch}-unknown-linux-gnu.tar.gz"; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl; \
+    apt-get install -y --no-install-recommends curl libdbus-1-3; \
     curl --fail --location --retry 3 "https://github.com/stellar/stellar-cli/releases/download/v30.0.1/$archivo" -o /tmp/stellar.tar.gz; \
     echo "$checksum  /tmp/stellar.tar.gz" | sha256sum -c; \
     tar -xzf /tmp/stellar.tar.gz -C /usr/local/bin stellar; \

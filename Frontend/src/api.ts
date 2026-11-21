@@ -1,4 +1,4 @@
-const base = (import.meta.env.VITE_API_URL || 'https://localhost:7339').replace(/\/$/, '')
+const base = (import.meta.env.VITE_API_URL?.trim() || (import.meta.env.DEV ? 'https://localhost:7339' : '')).replace(/\/$/, '')
 
 export interface Sesion {
   usuarioId: string

@@ -14,7 +14,7 @@ export function Acceso() {
   const navigate = useNavigate()
   const [query] = useSearchParams()
   const errorOAuth = query.get('error')
-  const [registro, editar] = useState(errorOAuth === 'invitacion')
+  const [registro, editar] = useState(errorOAuth === 'invitacion' || query.get('modo') === 'registro')
   const [revisor, elegirRevisor] = useState(errorOAuth === 'invitacion')
   const [codigo, setCodigo] = useState('')
   const [demo, setDemo] = useState(false)
@@ -24,9 +24,11 @@ export function Acceso() {
   const volver = query.get('volver') ?? ''
   const origen = /^\/ofertas\/[a-f\d-]{36}$/i.test(volver) ? volver : '/espacio'
   const mostrarInvitacion = registro && revisor
+  const accesoDisponible = modo === 'demo' || modo === 'oauth'
+  const conContrasena = proveedores.contrasena ?? modo === 'demo'
   const proveedoresOAuth = [
-    ...(proveedores.gitHub ? [{ nombre: 'GitHub', ruta: rutaGitHub }] : []),
-    ...(proveedores.facebook ? [{ nombre: 'Facebook', ruta: rutaFacebook }] : []),
+    { nombre: 'GitHub', ruta: rutaGitHub, habilitado: proveedores.gitHub },
+    { nombre: 'Facebook', ruta: rutaFacebook, habilitado: proveedores.facebook },
   ]
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export function Acceso() {
     const correo = String(fields.get('correo'))
     const contrasenia = String(fields.get('contrasenia') ?? '') || undefined
     void action.ejecutar(async () => {
+      if (mostrarInvitacion && !codigo.trim()) throw new Error('Indica el código de un solo uso para crear una cuenta de revisor.')
       if (registro) await api('/api/Usuarios/crear', {
         method: 'POST', body: {
           ci: fields.get('ci'), nombre: fields.get('nombre'), apellidos: fields.get('apellidos'),
@@ -78,6 +81,7 @@ export function Acceso() {
         <input name="codigoRevisor" value={codigo} onChange={e => setCodigo(e.target.value)}
           required maxLength={128} autoComplete="off" spellCheck={false}/>
       </Campo>
+      <small>El código se asigna automáticamente solo en la demo. En la versión oficial, cada revisor invitado recibirá su código de un solo uso por correo electrónico.</small>
       {buscandoCodigo && <small role="status">Buscando un código de demo…</small>}
       {demo && <div className="review-code-help">
         <small>El código de demo se consume al crear la cuenta.</small>
@@ -95,29 +99,40 @@ export function Acceso() {
       <h1>{registro ? 'Crea tu cuenta' : 'Entra a tu espacio'}</h1>
       {modo === 'cargando' && <p role="status">Consultando sesión…</p>}
       {modo === 'error' && <ErrorBox text="No se pudo consultar el acceso. Recarga la página para volver a intentar."/>}
-      {(modo === 'demo' || modo === 'oauth') && <div className="segmented" aria-label="Tipo de acceso">
-        <button type="button" aria-pressed={!registro} onClick={() => editar(false)}>Entrar</button>
+      {accesoDisponible && <div className="segmented" aria-label="Tipo de acceso">
+        <button type="button" aria-pressed={!registro} onClick={() => editar(false)}>Iniciar sesión</button>
         <button type="button" aria-pressed={registro} onClick={() => editar(true)}>Crear cuenta</button>
       </div>}
-      {modo === 'oauth' && <>
+      {accesoDisponible && <>
         {errorOAuth && <ErrorBox text={errorOAuth === 'invitacion'
           ? 'El código de revisor no es válido, ya fue utilizado o la cuenta del proveedor ya está registrada.'
           : errorOAuth === 'cuenta'
           ? 'No pudimos asociar tu cuenta. Comprueba que el proveedor comparte un correo o contacta al administrador si ya tienes un perfil.'
           : 'No pudimos completar el acceso. Intenta de nuevo.'}/>}
-        <form className="form-stack" method="post" onSubmit={e => {
+        {invitacion}
+        <form className="form-stack" method="post" aria-label="Acceso con redes sociales" onSubmit={e => {
           if (!mostrarInvitacion || !codigo.trim()) e.preventDefault()
         }}>
-          {invitacion}
-          {mostrarInvitacion && <input type="hidden" name="volver" value={origen}/>}
-          {proveedoresOAuth.map(({ nombre, ruta }) => mostrarInvitacion
-            ? <Button key={ruta} formAction={ruta + '/RegistrarRevisor'}>Crear cuenta con {nombre} <ArrowRight size={17}/></Button>
-            : <a key={ruta} className="button button-primary" href={ruta + '/Iniciar?volver=' + encodeURIComponent(origen)}>
-              {registro ? 'Crear cuenta' : 'Continuar'} con {nombre} <ArrowRight size={17}/>
-            </a>)}
+          {mostrarInvitacion && <>
+            <input type="hidden" name="volver" value={origen}/>
+            <input type="hidden" name="codigoRevisor" value={codigo.trim()}/>
+          </>}
+          {proveedoresOAuth.map(({ nombre, ruta, habilitado }) => {
+            const etiqueta = (registro ? 'Crear cuenta' : 'Iniciar sesión') + ' con ' + nombre
+            if (!habilitado) return <Button key={ruta} variant="secondary" type="button" disabled>
+              {etiqueta} <small>Sin configurar</small>
+            </Button>
+            return mostrarInvitacion
+              ? <Button key={ruta} formAction={ruta + '/RegistrarRevisor'} disabled={!codigo.trim()}>
+                {etiqueta} <ArrowRight size={17}/>
+              </Button>
+              : <a key={ruta} className="button button-primary" href={ruta + '/Iniciar?volver=' + encodeURIComponent(origen)}>
+                {etiqueta} <ArrowRight size={17}/>
+              </a>
+          })}
         </form>
       </>}
-      {modo === 'demo' && <form className="form-stack" onSubmit={submit}>
+      {accesoDisponible && conContrasena && <form className="form-stack" onSubmit={submit}>
         {registro && <>
           <Campo label="Nombre"><input name="nombre" required autoComplete="given-name"/></Campo>
           <Campo label="Apellidos"><input name="apellidos" autoComplete="family-name"/></Campo>
@@ -128,7 +143,6 @@ export function Acceso() {
           !piloto && !registro ? 'Contraseña (obligatoria para revisores y administradores)' : 'Contraseña'
         }><input name="contrasenia" type="password" minLength={piloto || registro ? 12 : undefined} maxLength={128}
           autoComplete={registro ? 'new-password' : 'current-password'} required={piloto || mostrarInvitacion}/></Campo>}
-        {invitacion}
         <Button disabled={action.busy}>{registro ? 'Crear perfil' : 'Continuar'} <ArrowRight size={17}/></Button>
         <ErrorBox text={action.error}/>
       </form>}

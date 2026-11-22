@@ -1,87 +1,115 @@
-import { useState } from 'react'
-import { ArrowRight, ClipboardCheck, FileText, FolderSearch } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ClipboardCheck, FileText, FolderSearch } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { api, descargar, fecha, type Expediente, type Inmueble } from '../api'
+import { api, descargar, fecha, moneda, type Compra, type Expediente } from '../api'
 import { useAccion, useDatos } from '../hooks'
 import { useSesion } from '../session'
 import { Button, Campo, ErrorBox, Estado } from '../ui/atoms'
+import { ComprobantesCompra } from '../ui/ComprobantesCompra'
 import { Empty, PageTitle } from '../ui/molecules'
 
 const intervalo = 4000
-const filtros = [
-  { id: 'EN_REVISION', label: 'Por revisar' },
-  { id: 'CON_OBSERVACIONES', label: 'Con observaciones' },
-  { id: 'APROBADO', label: 'Aprobados' },
-] as const
+const ordenEstado = ['EN_REVISION', 'APROBADO', 'CON_OBSERVACIONES']
+const fechaSolicitud = new Intl.DateTimeFormat('es-BO', {
+  dateStyle: 'short', timeStyle: 'short', timeZone: 'America/La_Paz',
+})
 
-type EspacioRevision = { tenantId: string; nombre: string }
+type Caso = { id: string; nombre: string; estadoRevision: string; solicitadoEn: string | null }
+type FilaRevision = {
+  persona: { id: string; nombres: string; apellidos: string | null; tenantId: string | null; espacio: string | null }
+  inmuebles: Caso[]
+  noDisponible: boolean
+}
+
+function ordenCaso(a: Caso, b: Caso) {
+  const fechaA = a.solicitadoEn ? Date.parse(a.solicitadoEn) : Number.MAX_SAFE_INTEGER
+  const fechaB = b.solicitadoEn ? Date.parse(b.solicitadoEn) : Number.MAX_SAFE_INTEGER
+  return ordenEstado.indexOf(a.estadoRevision) - ordenEstado.indexOf(b.estadoRevision) || fechaA - fechaB
+}
 
 export function RevisionBandeja() {
-  const { sesion, tenant } = useSesion()
-  const [id, setId] = useState(sesion?.tenantId ?? '')
-  const [filtro, setFiltro] = useState<string>('EN_REVISION')
-  const [cambiar, setCambiar] = useState(false)
-  const espacios = useDatos<EspacioRevision[]>('/api/SesionDemo/EspaciosRevision', sesion, intervalo)
-  const seleccionado = espacios.data?.find(e => e.tenantId === sesion?.tenantId)
-  const bandeja = useDatos<Inmueble[]>(seleccionado ? '/api/Inmuebles/Listar' : null, sesion, intervalo)
-  const expedientes = bandeja.data ?? []
-  const visibles = expedientes.filter(i => i.estadoRevision === filtro)
-  return <section className="inner">
-    <PageTitle title="Bandeja de revisión" description="Consulta expedientes, revisa el respaldo y registra tu decisión.">
-      {sesion?.tenantId && <Button variant="secondary" type="button" onClick={() => setCambiar(!cambiar)}>
-        {cambiar ? 'Cerrar selector' : 'Cambiar espacio'}
-      </Button>}
-    </PageTitle>
-    <ErrorBox text={espacios.error}/>
-    {espacios.loading && <p role="status">Cargando espacios de revisión…</p>}
-    {espacios.data?.length === 0 && <Empty title="Sin espacios para revisar" description="Los espacios habilitados aparecerán aquí."/>}
-    {!!espacios.data?.length && (!sesion?.tenantId || cambiar || !seleccionado) && <form className="panel form-stack compact mb-6" onSubmit={e => {
-      e.preventDefault()
-      if (!espacios.data?.some(e => e.tenantId === id)) return
-      tenant(id)
-      setFiltro('EN_REVISION')
-      setCambiar(false)
-    }}>
-      <Campo label="Espacio para revisar"><select value={id} onChange={e => setId(e.target.value)} required>
-        <option value="">Selecciona un espacio</option>
-        {espacios.data.map(e => <option key={e.tenantId} value={e.tenantId}>{e.nombre} · {e.tenantId.slice(0, 8)}</option>)}
-      </select></Campo>
-      <Button>Abrir expedientes <ArrowRight size={16}/></Button>
-    </form>}
-    {seleccionado && <>
-      <p className="muted mb-4">Espacio de {seleccionado.nombre}</p>
-      <div className="review-queue" role="group" aria-label="Filtrar expedientes por estado">
-        {filtros.map(x => <button type="button" aria-pressed={x.id === filtro}
-          onClick={() => setFiltro(x.id)} key={x.id}>
-          {x.label} <strong>{expedientes.filter(i => i.estadoRevision === x.id).length}</strong>
-        </button>)}
-      </div>
-      <ErrorBox text={bandeja.error}/>
-      {bandeja.loading && <p role="status">Cargando expedientes…</p>}
-      {bandeja.data && (visibles.length ? <ul className="property-list">
-        {visibles.map(i => <li key={i.id}>
-          <Link to={'/revision/expedientes/' + i.id}>
-            <span className="property-icon"><FolderSearch size={20}/></span>
-            <span className="property-main"><strong>{i.nombre}</strong><small>{i.ciudad} · {i.tipo}</small></span>
-            <Estado value={i.estadoRevision}/><ArrowRight className="property-arrow" size={17}/>
-          </Link>
-        </li>)}
-      </ul> : <Empty title="No hay expedientes en esta bandeja"
-         description="La lista se actualiza automáticamente cuando cambian los estados." />)}
-    </>}
+  const { sesion } = useSesion()
+  const bandeja = useDatos<FilaRevision[]>('/api/SesionDemo/MuroRevision', sesion, 12000)
+  const filas = (bandeja.data ?? [])
+    .map(fila => ({ ...fila, inmuebles: [...fila.inmuebles].sort((a, b) =>
+      ordenCaso(a, b) || a.nombre.localeCompare(b.nombre, 'es-BO') || a.id.localeCompare(b.id)) }))
+    .sort((a, b) => {
+      const primero = a.inmuebles[0]
+      const segundo = b.inmuebles[0]
+      if (!primero) return segundo ? 1 : 0
+      return segundo ? ordenCaso(primero, segundo) : -1
+    })
+  return <section className="inner flow-stack">
+    <PageTitle title="Muro de solicitudes"
+      description="Consulta los inmuebles por persona. Las solicitudes pendientes de aprobación más antiguas aparecen primero."/>
+    <ErrorBox text={bandeja.error}/>
+    {bandeja.loading && <p role="status">Cargando solicitudes…</p>}
+    {bandeja.data && (filas.length ? <div className="panel kpi-tabla">
+      <table className="review-table">
+        <thead><tr><th scope="col">Persona</th><th scope="col">Inmuebles y expedientes</th></tr></thead>
+        <tbody>{filas.map(({ persona, inmuebles, noDisponible }) => <tr key={persona.id}>
+          <th scope="row">{[persona.nombres, persona.apellidos].filter(Boolean).join(' ')}
+            {persona.espacio && <small>{persona.espacio}</small>}
+          </th>
+          <td>{persona.tenantId && inmuebles.length ? <ul className="review-cases">
+            {inmuebles.map(caso => <li key={caso.id}>
+              <Link className="button button-secondary"
+                to={'/revision/expedientes/' + persona.tenantId + '/' + caso.id}>
+                <FolderSearch size={16} aria-hidden="true"/> {caso.nombre}
+              </Link>
+              <Estado value={caso.estadoRevision}/>
+              {caso.solicitadoEn && <time dateTime={caso.solicitadoEn}>{fechaSolicitud.format(Date.parse(caso.solicitadoEn))}</time>}
+            </li>)}
+          </ul> : noDisponible ? <span role="status">Expedientes temporalmente no disponibles</span> : 'Sin solicitudes'}</td>
+        </tr>)}</tbody>
+      </table>
+    </div> : <Empty title="Sin personas registradas" description="Las personas y sus solicitudes aparecerán aquí."/>)}
+  </section>
+}
+
+export function RevisionTransacciones() {
+  const { sesion } = useSesion()
+  const [pagina, cambiarPagina] = useState(1)
+  const { data, error, loading } = useDatos<{ compras: Compra[]; haySiguiente: boolean }>(
+    '/api/Compras/Revision?pagina=' + pagina, sesion, 12000)
+  return <section className="inner flow-stack">
+    <PageTitle title="Transacciones de la plataforma"
+      description="Consulta el estado de las compras y sus comprobantes en Stellar Testnet."/>
+    <ErrorBox text={error}/>
+    {loading && <p role="status">Cargando transacciones…</p>}
+    {data && (data.compras.length ? <div className="panel kpi-tabla">
+      <table className="review-table">
+        <thead><tr><th scope="col">Inmueble y activo</th><th scope="col">Fecha</th><th scope="col">Unidades</th>
+          <th scope="col">Total</th><th scope="col">Estado</th><th scope="col">Comprobantes</th></tr></thead>
+        <tbody>{data.compras.map(compra => <tr key={compra.id}>
+          <th scope="row">{compra.inmueble}<small>{compra.codigo}</small></th>
+          <td><time dateTime={compra.creadaEn}>{fechaSolicitud.format(Date.parse(compra.creadaEn))}</time></td>
+          <td>{compra.unidades}</td><td>{moneda(compra.total, compra.moneda)}</td>
+          <td><Estado value={compra.estado}/></td>
+          <td>{compra.hashPago || (compra.estado === 'CONFIRMADA' && compra.hash)
+            ? <ComprobantesCompra compra={compra}/> : 'Sin comprobantes'}</td>
+        </tr>)}</tbody>
+      </table>
+    </div> : <p>No hay transacciones en esta página.</p>)}
+    {data && (pagina > 1 || data.haySiguiente) && <nav className="kpi-descargas" aria-label="Páginas de transacciones">
+      <Button type="button" variant="secondary" disabled={pagina === 1} onClick={() => cambiarPagina(pagina - 1)}>Anterior</Button>
+      <span>Página {pagina}</span>
+      <Button type="button" variant="secondary" disabled={!data.haySiguiente} onClick={() => cambiarPagina(pagina + 1)}>Siguiente</Button>
+    </nav>}
   </section>
 }
 
 export function RevisionDetalle() {
-  const { id } = useParams()
+  const { id, tenantId } = useParams()
   const { sesion } = useSesion()
+  const acceso = useMemo(() => sesion && tenantId ? { ...sesion, tenantId } : null, [sesion, tenantId])
   const ruta = '/api/Inmuebles/' + id
-  const ficha = useDatos<Expediente>('/api/Inmuebles/Buscar/' + id, sesion, intervalo)
+  const ficha = useDatos<Expediente>(acceso?.tenantId ? '/api/Inmuebles/Buscar/' + id : null, acceso, intervalo)
   const action = useAccion()
   const expediente = ficha.data
   const estado = expediente?.inmueble.estadoRevision
   return <section className="inner">
-    <Link className="back-link" to="/revision">← Bandeja de revisión</Link>
+    <Link className="back-link" to="/revision">← Muro de solicitudes</Link>
     <ErrorBox text={action.error || ficha.error}/>
     {ficha.loading && <p role="status">Cargando expediente…</p>}
     {expediente && <>
@@ -99,7 +127,7 @@ export function RevisionDetalle() {
           <section className="panel"><h2>Documentos de respaldo</h2>
             <ul className="plain-list">{expediente.documentos.map(d => <li key={d.documentoId + ':' + d.version}>
               <button className="text-button" type="button" onClick={() => void action.ejecutar(() =>
-                 descargar(`${ruta}/Documentos/${d.documentoId}/Versiones/${d.version}`, sesion))}>
+                 descargar(`${ruta}/Documentos/${d.documentoId}/Versiones/${d.version}`, acceso))}>
                 <FileText size={16}/> {d.clase} · versión {d.version}
               </button>
             </li>)}</ul>
@@ -117,7 +145,7 @@ export function RevisionDetalle() {
                   if (decision === 'CON_OBSERVACIONES' && !observacion)
                     throw new Error('Indica qué debe corregir el propietario.')
                   try {
-                    await api(ruta + '/ResolverRevision', { method: 'POST', sesion,
+                    await api(ruta + '/ResolverRevision', { method: 'POST', sesion: acceso,
                       body: { envioId: expediente.envioId, decision, observacion } })
                   } finally { ficha.refresh() }
                 })

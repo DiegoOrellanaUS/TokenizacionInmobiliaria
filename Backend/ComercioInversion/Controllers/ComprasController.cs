@@ -184,6 +184,23 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
     public Task<IActionResult> Portafolio(CancellationToken ct) => ConComprador(async comprador =>
         Ok(await Ordenes(comprador.UsuarioId).OrderByDescending(c => c.CreadaEn).ToListAsync(ct)), ct);
 
+    [HttpGet("Revision")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public Task<IActionResult> Revision([FromQuery, Range(1, 1_000_000)] int pagina = 1, CancellationToken ct = default) =>
+        ConCuenta(async _ =>
+        {
+            const int tamano = 25;
+            var compras = await context.Compras.AsNoTracking()
+                .OrderByDescending(c => c.CreadaEn).ThenByDescending(c => c.Id)
+                .Skip((pagina - 1) * tamano).Take(tamano + 1)
+                .Select(c => new
+                {
+                    c.Id, Inmueble = c.Oferta.Nombre, Codigo = c.Oferta.Codigo, c.Unidades,
+                    Total = c.PrecioUnitario * c.Unidades, c.Moneda, c.Estado, c.CreadaEn, c.Hash, c.HashPago
+                }).ToListAsync(ct);
+            return Ok(new { Compras = compras.Take(tamano), HaySiguiente = compras.Count > tamano });
+        }, ct, requiereRevisor: true);
+
     private Task<CompraDetalle?> OrdenActiva(Guid comprador, CancellationToken ct) =>
         Ordenes(comprador).Where(c => c.OfertaId == CompraDemo.OfertaCasaPrado &&
             (c.Estado == "ESPERANDO_PAGO" || c.Estado == "PENDIENTE")).OrderByDescending(c => c.CreadaEn).FirstOrDefaultAsync(ct);
@@ -217,7 +234,11 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
             PuedeCancelar = (c.Estado == "PENDIENTE" || c.Estado == "ESPERANDO_PAGO") && !c.TransferenciaIniciada,
         });
 
-    private async Task<IActionResult> ConComprador(Func<Titular, Task<IActionResult>> operacion, CancellationToken ct)
+    private Task<IActionResult> ConComprador(Func<Titular, Task<IActionResult>> operacion, CancellationToken ct) =>
+        ConCuenta(operacion, ct, requiereRevisor: false);
+
+    private async Task<IActionResult> ConCuenta(Func<Titular, Task<IActionResult>> operacion, CancellationToken ct,
+        bool requiereRevisor)
     {
         if (!environment.IsDevelopment() && !environment.IsEnvironment("Piloto"))
             return NotFound();
@@ -236,6 +257,8 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
             var titular = await respuesta.Content.ReadFromJsonAsync<Titular>(ct);
             if (titular is null || titular.UsuarioId == Guid.Empty)
                 return Unauthorized();
+            if (titular.EsRevisor != requiereRevisor)
+                return StatusCode(StatusCodes.Status403Forbidden);
 
             await preparar.Ejecutar(context, ct);
             return await operacion(titular);
@@ -255,7 +278,7 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
     private sealed record ConfiguracionPollar(string ClavePublica, string Destino, string Emisor, decimal PrecioUnitario);
     private sealed record PagoVerificado(bool Pendiente, long? Ledger);
 
-    private sealed record Titular(Guid UsuarioId, Guid? TenantId);
+    private sealed record Titular(Guid UsuarioId, Guid? TenantId, bool EsRevisor);
 
     private sealed class CompraDetalle
     {

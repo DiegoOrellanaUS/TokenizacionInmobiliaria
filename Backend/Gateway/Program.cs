@@ -74,6 +74,7 @@ static bool EsRutaPiloto(HttpRequest request)
 
     if (HttpMethods.IsGet(request.Method) &&
         (path == "/api/Planes/Listar" || path == "/api/SesionDemo/EspaciosRevision" ||
+         path == "/api/SesionDemo/MuroRevision" ||
          path == "/api/SesionDemo/Modo" || path == "/api/SesionDemo/CodigoRevisionDemo" ||
          path == "/api/Auth/GitHub/Estado" ||
          path == "/api/Auth/GitHub/Iniciar" || path == "/api/Auth/GitHub/Callback" ||

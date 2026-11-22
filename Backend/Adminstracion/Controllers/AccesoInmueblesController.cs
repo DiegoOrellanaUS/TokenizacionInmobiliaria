@@ -48,6 +48,15 @@ public class AccesoInmueblesController(
         if (tenant is null)
             return StatusCode(StatusCodes.Status403Forbidden);
 
+        if (await perfiles.EsRevisor(usuarioId, ct))
+        {
+            if (tenant.propietario_id == usuarioId ||
+                esSesionDemo && await sesiones.LeerAsync(HttpContext, ct, exigirIdentidad: true) != usuarioId)
+                return StatusCode(StatusCodes.Status403Forbidden);
+
+            return Ok(new { UsuarioId = usuarioId, EsTitular = false, EsRevisor = true, MaxTokensPropios = 0 });
+        }
+
         var condiciones = await (from s in context.Suscripcion.AsNoTracking()
                                  where s.tenant_id == tenantId && s.usuario_id == tenant.propietario_id &&
                                        s.estado == "ACTIVA" && s.desde <= ahora && (s.hasta == null || s.hasta > ahora)
@@ -65,9 +74,7 @@ public class AccesoInmueblesController(
                    where r.tenant_id == tenantId && r.alcance == "TENANT" && r.Rol.codigo == "TITULAR_TENANT"
                    select r.id).AnyAsync(ct);
 
-        var esRevisor = tenant.propietario_id != usuarioId && await perfiles.EsRevisor(usuarioId, ct);
-
-        if (!esTitular && !esRevisor)
+        if (!esTitular)
             return StatusCode(StatusCodes.Status403Forbidden);
 
         using var planContratado = JsonDocument.Parse(condiciones);
@@ -75,7 +82,7 @@ public class AccesoInmueblesController(
             planContratado.RootElement.TryGetProperty("max_tokens_propios", out var cupo) &&
             cupo.ValueKind == JsonValueKind.Number && cupo.TryGetInt32(out var maximo) ? maximo : 0;
 
-        return Ok(new { UsuarioId = usuarioId, EsTitular = esTitular, EsRevisor = esRevisor, MaxTokensPropios = maxTokensPropios });
+        return Ok(new { UsuarioId = usuarioId, EsTitular = true, EsRevisor = false, MaxTokensPropios = maxTokensPropios });
     }
 
     private static bool LeerCredenciales(string valor, out Guid usuarioId, out string password)

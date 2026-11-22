@@ -9,11 +9,12 @@ public sealed class PerfilSesion(AdminContext context, IConfiguration configurat
     public async Task<Perfil> ObtenerAsync(Usuario usuario, string token, DateTimeOffset? venceEn, CancellationToken ct,
         bool identidadVerificada = true)
     {
-        var tenant = await (from t in context.Tenant.AsNoTracking()
+        var esRevisor = await EsRevisor(usuario.id, ct);
+        var tenant = esRevisor ? null : await (from t in context.Tenant.AsNoTracking()
                             where t.propietario_id == usuario.id && t.estado == "ACTIVO"
                             select (Guid?)t.id).SingleOrDefaultAsync(ct);
         return new Perfil(usuario.id, usuario.nombres, usuario.correo_electronico, tenant,
-            await EsRevisor(usuario.id, ct), token, venceEn,
+            esRevisor, token, venceEn,
             identidadVerificada && await EsAdminGlobal(usuario.id, ct));
     }
 

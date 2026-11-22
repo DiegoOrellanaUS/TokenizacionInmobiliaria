@@ -7,9 +7,10 @@ namespace Adminstracion.Controllers;
 
 [ApiController]
 [Route("api/SesionDemo/Actual")]
-public sealed class SesionDemoActualController(AdminContext context, SesionDemo sesiones) : ControllerBase
+public sealed class SesionDemoActualController(AdminContext context, SesionDemo sesiones, PerfilSesion perfiles) : ControllerBase
 {
     [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Actual(CancellationToken ct)
     {
         if (!sesiones.Disponible(HttpContext))
@@ -23,9 +24,17 @@ public sealed class SesionDemoActualController(AdminContext context, SesionDemo 
         if (!activo)
             return Unauthorized();
 
+        var esRevisor = await perfiles.EsRevisor(usuarioId, ct);
+        if (esRevisor)
+        {
+            if (await sesiones.LeerAsync(HttpContext, ct, exigirIdentidad: true) != usuarioId)
+                return Unauthorized();
+            return Ok(new { UsuarioId = usuarioId, TenantId = (Guid?)null, EsRevisor = true });
+        }
+
         var tenantId = await (from t in context.Tenant.AsNoTracking()
                               where t.propietario_id == usuarioId
                               select (Guid?)t.id).SingleOrDefaultAsync(ct);
-        return Ok(new { UsuarioId = usuarioId, TenantId = tenantId });
+        return Ok(new { UsuarioId = usuarioId, TenantId = tenantId, EsRevisor = false });
     }
 }

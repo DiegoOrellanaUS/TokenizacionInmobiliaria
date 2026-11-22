@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 [Route("api/[controller]")]
 [ApiController]
 public class SubscripcionesController(AdminContext context, AprovisionarTenant aprovisionador,
-    IWebHostEnvironment environment, SesionDemo sesiones) : ControllerBase
+    IWebHostEnvironment environment, SesionDemo sesiones, PerfilSesion perfiles) : ControllerBase
 {
     private const string Proveedor = "PILOTO";
 
@@ -56,6 +56,9 @@ public class SubscripcionesController(AdminContext context, AprovisionarTenant a
         if ((piloto || sesiones.SoloOAuth || Request.Headers.ContainsKey("Authorization")) &&
             (await sesiones.LeerAsync(HttpContext, ct) != registro.UsuarioId))
             return StatusCode(StatusCodes.Status403Forbidden);
+
+        if (await perfiles.EsRevisor(registro.UsuarioId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, "Las cuentas de revisión no pueden contratar planes.");
 
         var codigo = registro.CodigoPlan.Trim();
         var referencia = registro.ReferenciaPago.Trim();

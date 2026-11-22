@@ -3,7 +3,7 @@ import { api, ApiError, type Sesion } from './api'
 import { cerrarSesion, renovarSesion } from './oauth'
 
 type Modo = 'cargando' | 'oauth' | 'demo' | 'error'
-type Proveedores = { gitHub: boolean; facebook?: boolean }
+type Proveedores = { gitHub: boolean; facebook?: boolean; contrasena?: boolean }
 const Context = createContext<{
   sesion: Sesion | null
   modo: Modo
@@ -75,6 +75,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
 
   async function entrar(correo: string, contrasenia?: string) {
     const nueva = await api<Sesion>('/api/SesionDemo/Iniciar', { method: 'POST', body: { correo, contrasenia } })
+    if (sesion?.venceEn) await cerrarSesion()
     guardar(nueva)
     return nueva
   }
@@ -84,7 +85,7 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   }
 
   async function salir() {
-    if (modo === 'oauth') await cerrarSesion()
+    if (sesion?.venceEn) await cerrarSesion()
     guardar(null)
   }
 

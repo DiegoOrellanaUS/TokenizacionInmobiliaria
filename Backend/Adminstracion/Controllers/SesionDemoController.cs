@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using Adminstracion.Data;
 using Adminstracion.Dominio;
 using Microsoft.AspNetCore.Identity;
@@ -12,11 +13,17 @@ namespace Adminstracion.Controllers;
 [ApiController]
 [Route("api/SesionDemo")]
 public sealed class SesionDemoController(AdminContext context, SesionDemo sesiones, PerfilSesion perfiles,
-    IWebHostEnvironment environment, IPasswordHasher<Usuario> hasher, InvitacionesRevision invitaciones) : ControllerBase
+    IWebHostEnvironment environment, IPasswordHasher<Usuario> hasher, InvitacionesRevision invitaciones,
+    IHttpClientFactory clientes, IConfiguration config) : ControllerBase
 {
     [HttpGet("Modo")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public IActionResult Modo() => Ok(new { GitHub = sesiones.GitHubHabilitado, Facebook = sesiones.FacebookHabilitado });
+    public IActionResult Modo() => Ok(new
+    {
+        GitHub = sesiones.GitHubHabilitado,
+        Facebook = sesiones.FacebookHabilitado,
+        Contrasena = !sesiones.SoloOAuth && sesiones.Disponible(HttpContext),
+    });
 
     [HttpGet("CodigoRevisionDemo")]
     [EnableRateLimiting("cuentas")]
@@ -39,7 +46,7 @@ public sealed class SesionDemoController(AdminContext context, SesionDemo sesion
                              where u.correo_electronico == correo && u.estado == "ACTIVO"
                              select u).SingleOrDefaultAsync(ct);
         var requiereContrasenia = environment.IsEnvironment("Piloto") ||
-            usuario is not null && (await context.InvitacionesRevision.AnyAsync(i => i.UsuarioId == usuario.id, ct) ||
+            usuario is not null && (await perfiles.EsRevisor(usuario.id, ct) ||
                 await perfiles.EsAdminGlobal(usuario.id, ct));
         if (requiereContrasenia &&
             (usuario is null || usuario.contrasenia_hash is not { } hash || solicitud.Contrasenia is not { Length: >= 12 } ||
@@ -72,6 +79,59 @@ public sealed class SesionDemoController(AdminContext context, SesionDemo sesion
                               .ToListAsync(ct);
         return Ok(espacios);
     }
+
+    [HttpGet("MuroRevision")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> MuroRevision(CancellationToken ct)
+    {
+        if (await sesiones.LeerAsync(HttpContext, ct, exigirIdentidad: true) is not { } usuarioId)
+            return Unauthorized();
+        if (!await perfiles.EsRevisor(usuarioId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var personas = await (from u in context.Usuario.AsNoTracking()
+                              where u.estado == "ACTIVO" && u.id != usuarioId
+                              join t in context.Tenant.AsNoTracking().Where(t => t.estado == "ACTIVO")
+                                  on u.id equals t.propietario_id into espacios
+                              from t in espacios.DefaultIfEmpty()
+                              orderby u.nombres, u.apellidos, u.id
+                              select new PersonaRevision(u.id, u.nombres, u.apellidos,
+                                  (Guid?)t!.id, t!.nombre_comercial)).ToListAsync(ct);
+        var filas = new FilaRevision[personas.Count];
+        var url = (config["Aprovisionamiento:InmueblesOperacion"] ?? "https://localhost:7311").TrimEnd('/');
+        var autorizacion = Request.Headers.Authorization.ToString();
+        using var cliente = clientes.CreateClient("AdministracionInterna");
+        await Parallel.ForEachAsync(Enumerable.Range(0, personas.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = ct }, async (index, token) =>
+        {
+            var persona = personas[index];
+            if (persona.TenantId is not { } tenantId)
+            {
+                filas[index] = new(persona, [], false);
+                return;
+            }
+            try
+            {
+                using var solicitud = new HttpRequestMessage(HttpMethod.Get, url + "/api/Inmuebles/BandejaRevision");
+                solicitud.Headers.TryAddWithoutValidation("Authorization", autorizacion);
+                solicitud.Headers.Add("X-Tenant", tenantId.ToString("D"));
+                using var respuesta = await cliente.SendAsync(solicitud, token);
+                respuesta.EnsureSuccessStatusCode();
+                var inmuebles = await respuesta.Content.ReadFromJsonAsync<InmuebleRevision[]>(token);
+                filas[index] = new(persona, inmuebles ?? [], inmuebles is null);
+            }
+            catch (Exception ex) when (!token.IsCancellationRequested &&
+                ex is HttpRequestException or JsonException or OperationCanceledException)
+            {
+                filas[index] = new(persona, [], true);
+            }
+        });
+        return Ok(filas);
+    }
+
+    private sealed record PersonaRevision(Guid Id, string Nombres, string? Apellidos, Guid? TenantId, string? Espacio);
+    private sealed record InmuebleRevision(Guid Id, string Nombre, string EstadoRevision, DateTimeOffset? SolicitadoEn);
+    private sealed record FilaRevision(PersonaRevision Persona, InmuebleRevision[] Inmuebles, bool NoDisponible);
 
     public sealed record CorreoSesion([Required, EmailAddress, StringLength(254)] string Correo,
         [StringLength(128)] string? Contrasenia = null);

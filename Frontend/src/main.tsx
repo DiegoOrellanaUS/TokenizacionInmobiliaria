@@ -1,12 +1,12 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowUpRight, Blocks, ChartNoAxesCombined, FolderSearch, LogOut, ShieldCheck } from 'lucide-react'
+import { ArrowUpRight, Blocks, ChartNoAxesCombined, ClipboardList, FolderSearch, LogOut, ShieldCheck } from 'lucide-react'
 import { SesionProvider, useSesion } from './session'
 import { Acceso } from './pages/Acceso'
 import { Espacio, NuevoInmueble, Planes } from './pages/Espacio'
 import { Expediente } from './pages/Expediente'
-import { RevisionBandeja, RevisionDetalle } from './pages/Revision'
+import { RevisionBandeja, RevisionDetalle, RevisionTransacciones } from './pages/Revision'
 import { DetalleOferta, Mercado } from './pages/Mercado'
 import { Portafolio } from './pages/Portafolio'
 import { Reportes } from './pages/Reportes'
@@ -14,12 +14,12 @@ import { PanelGlobal } from './pages/PanelGlobal'
 import './style.css'
 
 function Shell() {
-  const { sesion, salir } = useSesion()
+  const { sesion, modo, salir } = useSesion()
   const [errorSalida, setErrorSalida] = useState('')
   const navigate = useNavigate()
   const { pathname } = useLocation()
   useEffect(() => {
-    const name = pathname.startsWith('/administracion') ? 'Administración global' : pathname === '/' ? 'Inmuebles tokenizados' : pathname === '/espacio/reportes' ? 'Indicadores' : pathname.startsWith('/espacio') ? 'Mi espacio' :
+    const name = pathname.startsWith('/administracion') ? 'Administración global' : pathname === '/' ? 'Inmuebles tokenizados' : pathname === '/espacio/reportes' ? 'Mis reportes' : pathname.startsWith('/espacio') ? 'Mi espacio' :
       pathname.startsWith('/revision') ? 'Revisión de inmuebles' : pathname.startsWith('/ofertas') ? 'Oferta inmobiliaria' : pathname === '/portafolio' ? 'Portafolio' : pathname === '/planes' ? 'Planes' : 'Acceso'
     document.title = 'Umbral | ' + name
     const privateRoute = pathname.startsWith('/administracion') || pathname.startsWith('/espacio') || pathname.startsWith('/revision') || pathname === '/acceso' || pathname === '/portafolio'
@@ -54,7 +54,8 @@ function Shell() {
       </main>
     </div>
 
-  if (sesion?.esRevisor && (pathname === '/revision' || pathname.startsWith('/revision/')))
+  if (sesion?.esRevisor) {
+    if (pathname !== '/revision' && !pathname.startsWith('/revision/')) return <Navigate to="/revision" replace/>
     return <div className="review-site">
       <a href="#contenido" className="skip">Saltar al contenido</a>
       <header className="review-header">
@@ -68,8 +69,9 @@ function Shell() {
       </header>
       <div className="review-layout">
         <nav className="review-nav" aria-label="Herramientas de revisión">
-          <NavLink to="/revision"><FolderSearch size={18} aria-hidden="true"/> Bandeja de expedientes</NavLink>
-          {sesion.esAdminGlobal && <NavLink to="/administracion/indicadores">Indicadores globales</NavLink>}
+          <NavLink to="/revision" end><FolderSearch size={18} aria-hidden="true"/> Muro de solicitudes</NavLink>
+          <NavLink to="/revision/transacciones"><ClipboardList size={18} aria-hidden="true"/> Transacciones</NavLink>
+          <NavLink to="/revision/reportes"><ChartNoAxesCombined size={18} aria-hidden="true"/> Reportes globales</NavLink>
         </nav>
         <main id="contenido">
           {errorSalida && <p className="alert" role="alert">{errorSalida}</p>}
@@ -77,16 +79,16 @@ function Shell() {
         </main>
       </div>
     </div>
+  }
 
   return <div className="site">
     <a href="#contenido" className="skip">Saltar al contenido</a>
     <header className="topbar"><div className="topbar-inner">
       <Link className="brand" to="/" aria-label="Umbral, inicio"><i><Blocks size={19}/></i>umbral<span>.</span></Link>
       <nav aria-label="Navegación principal">
-        {sesion?.esRevisor ? <NavLink to="/revision">Revisión</NavLink> : <>
-          <NavLink to="/" end>Mercado</NavLink><NavLink to="/planes">Planes</NavLink>
-          {sesion && <><NavLink to="/espacio">Mi espacio</NavLink><NavLink to="/portafolio">Portafolio</NavLink></>}
-        </>}
+        <NavLink to="/" end>Mercado</NavLink><NavLink to="/planes">Planes</NavLink>
+        {sesion && <><NavLink to="/espacio">Mi espacio</NavLink><NavLink to="/portafolio">Portafolio</NavLink>
+          <NavLink to="/espacio/reportes">Mis reportes</NavLink></>}
         {sesion?.esAdminGlobal && <NavLink to="/administracion/indicadores">Indicadores globales</NavLink>}
       </nav>
       {sesion ? <button className="account" type="button" aria-label="Cerrar sesión" onClick={cerrar}>
@@ -95,7 +97,8 @@ function Shell() {
     </div></header>
     <main id="contenido">
       {errorSalida && <p className="alert" role="alert">{errorSalida}</p>}
-      <Outlet/>
+      {modo === 'cargando' && (pathname === '/planes' || pathname === '/' || pathname.startsWith('/ofertas/'))
+        ? <p role="status" className="inner">Consultando sesión…</p> : <Outlet/>}
     </main>
     <footer><div><Link className="brand" to="/">umbral<span>.</span></Link><p>Mercado de demostración · Stellar Testnet</p></div></footer>
   </div>
@@ -119,16 +122,21 @@ createRoot(document.getElementById('root')!).render(
       <Route path="acceso" element={<Acceso/>}/>
       <Route path="planes" element={<Planes/>}/>
       <Route path="ofertas/:id" element={<DetalleOferta/>}/>
-      <Route element={<Privado/>}><Route path="espacio" element={<Espacio/>}/><Route path="portafolio" element={<Portafolio/>}/></Route>
-      <Route element={<Privado requiereTenant/>}>
+      <Route element={<Privado/>}>
+        <Route path="espacio" element={<Espacio/>}/>
+        <Route path="portafolio" element={<Portafolio/>}/>
         <Route path="espacio/reportes" element={<Reportes/>}/>
+      </Route>
+      <Route element={<Privado requiereTenant/>}>
         <Route path="espacio/nuevo" element={<NuevoInmueble/>}/>
         <Route path="espacio/inmuebles/:id" element={<Expediente/>}/>
       </Route>
       <Route element={<Privado admin/>}><Route path="administracion/indicadores" element={<PanelGlobal/>}/></Route>
-      <Route element={<Privado revisor/>}><Route path="revision" element={<RevisionBandeja/>}/></Route>
-      <Route element={<Privado revisor requiereTenant/>}>
-        <Route path="revision/expedientes/:id" element={<RevisionDetalle/>}/>
+      <Route element={<Privado revisor/>}>
+        <Route path="revision" element={<RevisionBandeja/>}/>
+        <Route path="revision/expedientes/:tenantId/:id" element={<RevisionDetalle/>}/>
+        <Route path="revision/transacciones" element={<RevisionTransacciones/>}/>
+        <Route path="revision/reportes" element={<PanelGlobal/>}/>
       </Route>
       <Route path="*" element={<Navigate to="/" replace/>}/>
     </Route>

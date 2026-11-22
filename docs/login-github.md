@@ -39,7 +39,9 @@ En `gateway` apunta el nuevo cluster a Login:
 ReverseProxy__Clusters__login__Destinations__principal__Address=http://${{login.RAILWAY_PRIVATE_DOMAIN}}:8080/
 ```
 
-Despliega primero el código actualizado para que Admin aplique la migración `SesionesOAuth`. Comprueba que `/api/Auth/GitHub/Estado` llega a Login. Activa finalmente `GitHubOAuth__Habilitado=true` en **Admin**. Al activar ese modo, Admin acepta solo sesiones de OAuth y la interfaz muestra solo el botón de GitHub.
+Despliega primero el código actualizado para que Admin aplique la migración `SesionesOAuth`. Comprueba que `/api/Auth/GitHub/Estado` llega a Login. Activa finalmente `GitHubOAuth__Habilitado=true` en **Admin**. En **Piloto**, el acceso con contraseña permanece disponible junto a los proveedores configurados.
+
+Para Facebook, registra `https://tokenizacion-inmobiliaria.vercel.app/api/Auth/Facebook/Callback` como URI válido de redirección. Configura `FacebookOAuth__AppId`, `FacebookOAuth__AppSecret`, `FacebookOAuth__Origen` y `FacebookOAuth__Habilitado=true` en **Login**. Una vez comprobado el acceso al proveedor, activa `FacebookOAuth__Habilitado=true` en **Admin**.
 
 Un perfil previo se conserva cuando un administrador vincula explícitamente el **ID numérico de GitHub** al UUID de ese usuario en `GitHubOAuth__Vinculos__ID_NUMERICO`, en **Login**. El correo por sí solo no trata un perfil anterior como propio. Para conservar la revisión de inmuebles, vincula la cuenta GitHub del revisor y configura `Inmuebles__Revisores__0` con su UUID de Umbral en Login. Admin mantiene su lista de revisores para autorizar las operaciones.
 

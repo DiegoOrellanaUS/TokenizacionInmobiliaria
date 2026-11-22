@@ -1,5 +1,6 @@
 import { Download, FileSpreadsheet } from 'lucide-react'
-import { descargar, moneda } from '../api'
+import { Link } from 'react-router-dom'
+import { descargar, moneda, type Compra } from '../api'
 import { useAccion, useDatos } from '../hooks'
 import { useSesion } from '../session'
 import { Button, ErrorBox } from '../ui/atoms'
@@ -24,21 +25,39 @@ const fecha = new Intl.DateTimeFormat('es-BO', { dateStyle: 'medium', timeStyle:
 
 export function Reportes() {
   const { sesion } = useSesion()
-  const { data, loading, error } = useDatos<Informe>(ruta, sesion, 6000)
+  const { data, loading, error } = useDatos<Informe>(sesion?.tenantId ? ruta : null, sesion, 6000)
+  const compras = useDatos<Compra[]>('/api/Compras/Portafolio', sesion, 12000)
   const descarga = useAccion()
   const ultimaFuente = data?.fuentes.reduce((min, f) => f.sincronizadoEn
     ? Math.min(min, Date.parse(f.sincronizadoEn)) : min, Number.POSITIVE_INFINITY)
   const atrasado = data?.listo && ultimaFuente !== undefined && Date.parse(data.generadoEn) - ultimaFuente > 60_000
 
   return <section className="inner flow-stack kpi-pagina">
-    <PageTitle title="Indicadores de mi espacio" description="Sigue tus inmuebles, la colocación de tokens y el estado de las compras.">
-      <div className="kpi-descargas">
+    <PageTitle title="Mis reportes" description="Consulta tu actividad de compra y los indicadores de tu espacio.">
+      {sesion?.tenantId && <div className="kpi-descargas">
         <Button type="button" variant="secondary" disabled={!data?.listo || descarga.busy} onClick={() => void descarga.ejecutar(() =>
-          descargar(ruta + '/excel', sesion, 'kpi-umbral.xlsx'))}><FileSpreadsheet size={17}/> Excel</Button>
+          descargar(ruta + '/excel', sesion, 'kpi-umbral.xlsx'))}><FileSpreadsheet size={17}/> Excel de mi espacio</Button>
         <Button type="button" variant="secondary" disabled={!data?.listo || descarga.busy} onClick={() => void descarga.ejecutar(() =>
-          descargar(ruta + '/pdf', sesion, 'kpi-umbral.pdf'))}><Download size={17}/> PDF</Button>
-      </div>
+          descargar(ruta + '/pdf', sesion, 'kpi-umbral.pdf'))}><Download size={17}/> PDF de mi espacio</Button>
+      </div>}
     </PageTitle>
+    <section className="flow-stack">
+      <h2>Actividad de compra</h2>
+      <ErrorBox text={compras.error}/>
+      {compras.loading && <p role="status">Consultando tus compras…</p>}
+      {compras.data && (compras.data.length ? <GraficoKpi dato={{
+        titulo: 'Mis compras por estado', unidad: 'compras',
+        explicacion: 'Cada barra cuenta las órdenes en ese estado. Las órdenes canceladas y fallidas quedan fuera de las compras confirmadas.',
+        barras: [
+          { etiqueta: 'Confirmadas', valor: compras.data.filter(c => c.estado === 'CONFIRMADA').length },
+          { etiqueta: 'Pendientes', valor: compras.data.filter(c => c.estado === 'PENDIENTE' || c.estado === 'ESPERANDO_PAGO').length },
+          { etiqueta: 'Canceladas', valor: compras.data.filter(c => c.estado === 'CANCELADA').length },
+          { etiqueta: 'Fallidas', valor: compras.data.filter(c => c.estado === 'FALLIDA').length },
+        ],
+      }}/> : <p>Tus compras aparecerán aquí cuando registres una orden.</p>)}
+      <Link className="text-button" to="/portafolio">Ver órdenes y comprobantes en mi portafolio</Link>
+    </section>
+    {sesion?.tenantId && <h2>Indicadores de mi espacio</h2>}
     <ErrorBox text={error || descarga.error}/>
     {loading && <p role="status">Consultando indicadores…</p>}
     {data && !data.listo && <p className="panel" role="status">Estamos cargando los datos de tus inmuebles, emisiones y compras.</p>}

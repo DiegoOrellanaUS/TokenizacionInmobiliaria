@@ -6,6 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Adminstracion/Adminstracion.csproj" />
+    <ProjectReference Include="../Adminstracion/Adminstracion.csproj" AdditionalProperties="PublicarComoReferenciaLogin=true" />
   </ItemGroup>
 </Project>

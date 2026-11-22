@@ -71,11 +71,31 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
     await revisar.goto('/acceso')
     await revisar.getByLabel('Correo electrónico').fill(correoRevisor)
     if (contraseniaRevisor) await revisar.getByLabel('Contraseña').fill(contraseniaRevisor)
+    const sesionRevisor = revisar.waitForResponse(r => r.url().endsWith('/api/SesionDemo/Iniciar') && r.ok())
     await revisar.getByRole('button', { name: 'Continuar' }).click()
-    await expect(revisar.getByRole('heading', { name: 'Bandeja de revisión' })).toBeVisible()
-    await revisar.getByLabel('Espacio para revisar').selectOption(pago.tenantId)
-    await revisar.getByRole('button', { name: 'Abrir expedientes' }).click()
-    await expect(revisar.getByText('No hay expedientes en esta bandeja')).toBeVisible()
+    const perfil = await (await sesionRevisor).json()
+    expect(perfil).toMatchObject({ esRevisor: true, tenantId: null })
+    const headers = { Authorization: 'Bearer ' + perfil.token }
+    const [contratar, comprar, publicar] = await Promise.all([
+      revisar.request.post(gateway + '/api/Subscripciones/crear', {
+        headers, data: { usuarioId: perfil.usuarioId, codigoPlan: 'PRUEBA', referenciaPago: serie },
+      }),
+      revisar.request.post(gateway + '/api/Compras/Ofertas/' + pago.tenantId, {
+        headers, data: { referencia: crypto.randomUUID(), unidades: 1 },
+      }),
+      revisar.request.post(gateway + '/api/Ofertas/' + id + '/Publicar', {
+        headers: { ...headers, 'X-Tenant': pago.tenantId }, data: { precio: 10, moneda: 'BOB', unidades: 1 },
+      }),
+    ])
+    expect([contratar.status(), comprar.status(), publicar.status()]).toEqual([403, 403, 403])
+    await expect(revisar.getByRole('heading', { name: 'Muro de solicitudes' })).toBeVisible()
+    await revisar.getByRole('link', { name: 'Transacciones', exact: true }).click()
+    await expect(revisar.getByRole('heading', { name: 'Transacciones de la plataforma' })).toBeVisible()
+    await revisar.getByRole('link', { name: 'Reportes globales' }).click()
+    await expect(revisar.getByRole('heading', { name: 'Indicadores de la plataforma' })).toBeVisible()
+    await revisar.getByRole('link', { name: 'Muro de solicitudes', exact: true }).click()
+    await expect(revisar.getByRole('table')).toBeVisible()
+    await expect(revisar.getByRole('link', { name: nombre })).toHaveCount(0)
     await page.bringToFront()
     await page.getByRole('button', { name: 'Enviar a revisión' }).click()
     await expect(page.getByText('En revisión', { exact: true })).toBeVisible()
@@ -181,7 +201,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
       const compra = await fetch(path, { headers })
       const sinToken = await fetch(path)
       const ajeno = await fetch(path, { headers: cabeceraVendedor })
-      const revisor = await fetch(gateway + '/api/SesionDemo/EspaciosRevision', { headers })
+      const revisor = await fetch(gateway + '/api/SesionDemo/MuroRevision', { headers })
       const rutaCompra = gateway + '/api/Compras/Ofertas/' + oferta
       const reintento = await fetch(rutaCompra, {
         method: 'POST', headers, body: JSON.stringify({ referencia: orden.id, unidades: 2 }),

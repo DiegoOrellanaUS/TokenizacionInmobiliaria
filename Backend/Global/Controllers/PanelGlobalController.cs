@@ -14,19 +14,19 @@ public sealed class PanelGlobalController(AlmacenGlobal almacen, ConsultarGlobal
     IHttpClientFactory clientes, IConfiguration config) : ControllerBase
 {
     [HttpGet]
-    public Task<IActionResult> Obtener(CancellationToken ct) => ConAdministrador(panel => Ok(panel), ct);
+    public Task<IActionResult> Obtener(CancellationToken ct) => ConAcceso(panel => Ok(panel), ct);
 
     [HttpGet("excel")]
-    public Task<IActionResult> Excel(CancellationToken ct) => ConAdministrador(panel => panel.Listo
+    public Task<IActionResult> Excel(CancellationToken ct) => ConAcceso(panel => panel.Listo
         ? File(ExcelKpi.Crear(panel.Exportar()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "indicadores-globales-umbral.xlsx")
         : Conflict("La carga inicial de los indicadores globales está en curso."), ct);
 
     [HttpGet("pdf")]
-    public Task<IActionResult> Pdf(CancellationToken ct) => ConAdministrador(panel => panel.Listo
+    public Task<IActionResult> Pdf(CancellationToken ct) => ConAcceso(panel => panel.Listo
         ? File(PdfKpi.Crear(panel.Exportar()), "application/pdf", "indicadores-globales-umbral.pdf")
         : Conflict("La carga inicial de los indicadores globales está en curso."), ct);
 
-    private async Task<IActionResult> ConAdministrador(Func<InformePanelGlobal, IActionResult> responder, CancellationToken ct)
+    private async Task<IActionResult> ConAcceso(Func<InformePanelGlobal, IActionResult> responder, CancellationToken ct)
     {
         if (Request.Headers.Authorization.Count != 1) return Unauthorized();
         var clave = config["Global:ClaveAccesoPanel"];

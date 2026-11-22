@@ -145,8 +145,9 @@
   .review-account { @apply flex items-center gap-2 rounded-lg border border-[#5f7593] px-3 py-2 text-sm hover:bg-[#24456e]; }
   .review-header :focus-visible, .review-nav :focus-visible { outline-color: #9ccaff; }
   .review-layout { @apply grid lg:min-h-[calc(100dvh-68px)] lg:grid-cols-[224px_minmax(0,1fr)]; }
-  .review-nav { @apply flex items-center gap-2 bg-[#1b365a] px-5 py-2 text-sm text-[#e8f0ff] lg:flex-col lg:items-stretch lg:px-4 lg:py-8; }
+  .review-nav { @apply flex flex-wrap items-center gap-2 bg-[#1b365a] px-5 py-2 text-sm text-[#e8f0ff] lg:flex-col lg:items-stretch lg:px-4 lg:py-8; }
   .review-nav a { @apply flex items-center gap-2 rounded-lg bg-[#2d5280] px-3 py-2.5 font-semibold; }
+  .review-nav a[aria-current="page"] { @apply bg-[#e5effe] text-[#163c72]; }
   .review-layout main { @apply min-w-0 pb-10; }
   .review-layout h1, .review-layout h2 { @apply font-sans font-semibold; }
   .review-layout h1 { @apply text-3xl sm:text-4xl; }
@@ -158,10 +159,11 @@
   .review-layout .button-primary { @apply bg-[#225293] hover:bg-[#183d70]; }
   .review-layout .button-secondary { @apply border-[#a5b9d2] bg-white text-[#244e84] hover:border-[#244e84]; }
   .review-layout .back-link, .review-layout .text-button { color: #244e84; }
-  .review-queue { @apply mb-5 grid gap-2 sm:grid-cols-3; }
-  .review-queue button { @apply flex items-center justify-between gap-2 rounded-xl border border-[#c8d6e8] bg-white p-3 text-left text-sm font-semibold text-[#2a4b74] hover:bg-[#e5effe]; }
-  .review-queue button[aria-pressed="true"] { @apply border-[#235ba3] bg-[#dfebfd] text-[#163c72]; }
-  .review-queue strong { @apply rounded-md bg-[#edf3fe] px-2 py-1 text-base tabular-nums; }
+  .review-table th[scope="row"] { @apply min-w-36; }
+  .review-table .break-all { @apply max-w-64 whitespace-normal; }
+  .review-cases { @apply grid min-w-48 gap-3; }
+  .review-cases li { @apply flex flex-wrap items-center gap-2; }
+  .review-cases time { @apply text-xs text-[#2a4b74]; }
   .review-layout .review-decision { @apply border-[#96b3d9] bg-[#f8fbff]; }
 }
 

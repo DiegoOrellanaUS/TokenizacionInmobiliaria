@@ -12,10 +12,11 @@ public sealed class SesionDemo(IDataProtectionProvider provider, IWebHostEnviron
 
     public bool GitHubHabilitado => configuration.GetValue<bool>("GitHubOAuth:Habilitado");
     public bool FacebookHabilitado => configuration.GetValue<bool>("FacebookOAuth:Habilitado");
-    public bool SoloOAuth => GitHubHabilitado || FacebookHabilitado;
+    private bool OAuthHabilitado => GitHubHabilitado || FacebookHabilitado;
+    public bool SoloOAuth => OAuthHabilitado && !environment.IsEnvironment("Piloto");
 
     public bool Disponible(HttpContext http) =>
-        SoloOAuth || environment.IsEnvironment("Piloto") ||
+        OAuthHabilitado || environment.IsEnvironment("Piloto") ||
         (environment.IsDevelopment() && configuration.GetValue<bool>("SesionDemo:Habilitada") &&
          http.Connection.RemoteIpAddress is { } remote && IPAddress.IsLoopback(remote));
 
@@ -33,10 +34,12 @@ public sealed class SesionDemo(IDataProtectionProvider provider, IWebHostEnviron
         if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) || header.Length > 2048)
             return null;
 
-        if (SoloOAuth) return await oauth.ValidarAsync(header[7..], ct);
+        var token = header[7..];
+        if (OAuthHabilitado && token.Length == 43) return await oauth.ValidarAsync(token, ct);
+        if (SoloOAuth) return null;
         try
         {
-            var contenido = protector.Unprotect(header[7..]);
+            var contenido = protector.Unprotect(token);
             var verificada = contenido.EndsWith(IdentidadVerificada, StringComparison.Ordinal);
             if (exigirIdentidad && !verificada) return null;
             var identidad = verificada ? contenido[..^IdentidadVerificada.Length] : contenido;

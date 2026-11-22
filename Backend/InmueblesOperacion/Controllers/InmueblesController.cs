@@ -32,6 +32,24 @@ public partial class InmueblesController(InmueblesOperacionContext context, Tena
     public async Task<IActionResult> GetListar(CancellationToken ct) =>
         Ok(await Proyectar(Visibles().OrderBy(i => i.nombre).ThenBy(i => i.id)).ToListAsync(ct));
 
+    [HttpGet("BandejaRevision")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> BandejaRevision(CancellationToken ct)
+    {
+        if (!tenant.EsRevisor)
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var inmuebles = await (from i in Visibles().AsNoTracking()
+            select new
+            {
+                Id = i.id, Nombre = i.nombre, EstadoRevision = i.estado_revision,
+                SolicitadoEn = context.EventoInmueble
+                    .Where(e => e.inmueble_id == i.id && e.estado_revision == EnRevision)
+                    .Max(e => (DateTimeOffset?)e.ocurrido_en)
+            }).ToListAsync(ct);
+        return Ok(inmuebles);
+    }
+
     [HttpGet("Buscar/{id:guid}", Name = "BuscarInmueble")]
     public async Task<IActionResult> GetBuscar(Guid id, CancellationToken ct)
     {

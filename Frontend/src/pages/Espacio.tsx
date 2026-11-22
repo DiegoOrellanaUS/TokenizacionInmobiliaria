@@ -21,7 +21,7 @@ export function Espacio() {
       <Link className="button button-primary" to="/espacio/nuevo"><CirclePlus size={18}/> Nuevo inmueble</Link>
     </PageTitle>
     <div className="tenant-bar">
-      <Link className="button button-secondary" to="/espacio/reportes">Ver indicadores</Link>
+      <Link className="button button-secondary" to="/espacio/reportes">Mis reportes</Link>
       <Button variant="secondary" type="button" onClick={() => {
         void navigator.clipboard.writeText(sesion.tenantId || '').then(() => setCopiado(true), () => setCopiado(false))
       }}><Copy size={15}/>{copiado ? 'Tenant copiado' : 'Copiar ID del tenant'}</Button>

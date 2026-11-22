@@ -21,6 +21,7 @@ public sealed class AccesoGlobalController(IConfiguration config, SesionDemo ses
 
         if (await sesiones.LeerAsync(HttpContext, ct, exigirIdentidad: true) is not { } usuario)
             return Unauthorized();
-        return await perfiles.EsAdminGlobal(usuario, ct) ? NoContent() : StatusCode(403);
+        return await perfiles.EsAdminGlobal(usuario, ct) || await perfiles.EsRevisor(usuario, ct)
+            ? NoContent() : StatusCode(403);
     }
 }

@@ -22,4 +22,7 @@
     <Folder Include="Controllers\" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(PublicarComoReferenciaLogin)' == 'true'">
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
 </Project>

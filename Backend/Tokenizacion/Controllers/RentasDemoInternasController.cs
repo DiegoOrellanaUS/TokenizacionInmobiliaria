@@ -63,7 +63,9 @@ public sealed class RentasDemoInternasController(IWebHostEnvironment environment
     private bool Autorizado()
     {
         var clave = config["Comercio:ClaveLiquidacionDemo"];
-        return environment.IsDevelopment() && !string.IsNullOrWhiteSpace(clave) &&
+        var habilitadas = environment.IsDevelopment() ||
+            (environment.IsEnvironment("Piloto") && config.GetValue<bool>("RentasDemo:Habilitadas"));
+        return habilitadas && !string.IsNullOrWhiteSpace(clave) &&
             Request.Headers.TryGetValue("X-Liquidacion-Demo", out var recibida) && recibida.Count == 1 &&
             CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(clave), Encoding.UTF8.GetBytes(recibida.ToString()));
     }

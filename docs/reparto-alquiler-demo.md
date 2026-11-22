@@ -1,6 +1,6 @@
 # Cierre mensual y reparto de alquiler en la demo
 
-El recorrido usa Comercio para guardar el cierre y las asignaciones en PostgreSQL y Tokenización para firmar y confirmar los pagos. Las operaciones están disponibles en el entorno local `Development`. Las rentas se contabilizan en bolivianos y los pagos usan XLM de **Stellar Testnet**. La conversión en Bs por XLM se registra para cada cierre como dato simulado.
+El recorrido usa Comercio para guardar el cierre y las asignaciones en PostgreSQL y Tokenización para firmar y confirmar los pagos. Las operaciones se habilitan en `Development` y, para la demo desplegada, en `Piloto` cuando ambos servicios tienen `RentasDemo__Habilitadas=true`. Las rentas se contabilizan en bolivianos y los pagos usan XLM de **Stellar Testnet**. La conversión en Bs por XLM se registra para cada cierre como dato simulado.
 
 ## Recorrido
 

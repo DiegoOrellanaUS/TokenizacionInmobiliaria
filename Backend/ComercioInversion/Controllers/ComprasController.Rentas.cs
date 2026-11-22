@@ -9,8 +9,11 @@ namespace ComercioInversion.Controllers;
 
 public sealed partial class ComprasController
 {
+    private bool RentasDemoHabilitadas => environment.IsDevelopment() ||
+        (environment.IsEnvironment("Piloto") && configuration.GetValue<bool>("RentasDemo:Habilitadas"));
+
     [HttpGet("Rentas/Disponible")]
-    public IActionResult RentasDisponibles() => environment.IsDevelopment() ? Ok(new { Habilitadas = true }) : NotFound();
+    public IActionResult RentasDisponibles() => RentasDemoHabilitadas ? Ok(new { Habilitadas = true }) : NotFound();
 
     [HttpGet("Rentas/Propias")]
     public Task<IActionResult> RentasPropias(CancellationToken ct) => ConRentas(async cuenta =>
@@ -161,7 +164,7 @@ public sealed partial class ComprasController
     }
 
     private Task<IActionResult> ConRentas(Func<Titular, Task<IActionResult>> operacion, CancellationToken ct, bool revisor = false) =>
-        environment.IsDevelopment() ? ConCuenta(operacion, ct, revisor) : Task.FromResult<IActionResult>(NotFound());
+        RentasDemoHabilitadas ? ConCuenta(operacion, ct, revisor) : Task.FromResult<IActionResult>(NotFound());
 
     private IQueryable<CierreRenta> CierresRenta() => context.CierresRenta.AsNoTracking()
         .Include(c => c.Oferta).Include(c => c.Pagos).OrderByDescending(c => c.Periodo).ThenByDescending(c => c.Corte);

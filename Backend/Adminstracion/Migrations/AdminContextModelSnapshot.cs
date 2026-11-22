@@ -23,6 +23,26 @@ namespace Adminstracion.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Adminstracion.Dominio.InvitacionRevisionCanjeada", b =>
+                {
+                    b.Property<string>("CodigoHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CanjeadaEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("CodigoHash");
+
+                    b.HasIndex("UsuarioId")
+                        .IsUnique();
+
+                    b.ToTable("invitacion_revision_canjeada", "admin");
+                });
+
             modelBuilder.Entity("Adminstracion.Dominio.Plan", b =>
                 {
                     b.Property<Guid>("id")
@@ -93,7 +113,7 @@ namespace Adminstracion.Migrations
 
                             t.HasCheckConstraint("ck_plan_oferta_fechas", "oferta_hasta > oferta_desde");
 
-                            t.HasCheckConstraint("ck_plan_transicion", "(plan_origen_id IS NULL OR plan_destino_id IS NOT NULL)\nAND (plan_origen_id IS NULL OR plan_origen_id <> plan_destino_id)\nAND (plan_origen_id IS NULL OR plan_origen_id <> id)\nAND (plan_destino_id IS NULL OR plan_destino_id <> id)");
+                            t.HasCheckConstraint("ck_plan_transicion", "(plan_origen_id IS NULL OR plan_destino_id IS NOT NULL)\r\nAND (plan_origen_id IS NULL OR plan_origen_id <> plan_destino_id)\r\nAND (plan_origen_id IS NULL OR plan_origen_id <> id)\r\nAND (plan_destino_id IS NULL OR plan_destino_id <> id)");
                         });
                 });
 
@@ -130,6 +150,47 @@ namespace Adminstracion.Migrations
                         {
                             t.HasCheckConstraint("ck_rol_orden", "orden_visual >= 0");
                         });
+                });
+
+            modelBuilder.Entity("Adminstracion.Dominio.SesionOAuth", b =>
+                {
+                    b.Property<string>("TokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("AccessHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("FamiliaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RevocadoEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("UsadoEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("VenceAccess")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("VenceEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TokenHash");
+
+                    b.HasIndex("AccessHash")
+                        .IsUnique();
+
+                    b.HasIndex("FamiliaId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("sesion_oauth", "admin");
                 });
 
             modelBuilder.Entity("Adminstracion.Dominio.Suscripcion", b =>
@@ -187,7 +248,7 @@ namespace Adminstracion.Migrations
 
                     b.ToTable("suscripcion", "admin", t =>
                         {
-                            t.HasCheckConstraint("ck_suscripcion_pago", "(proveedor_pago IS NULL) = (referencia_pago IS NULL)\nAND (pago_confirmado_en IS NULL OR (referencia_pago IS NOT NULL AND importe_pagado IS NOT NULL))\nAND (importe_pagado IS NULL OR importe_pagado >= 0)");
+                            t.HasCheckConstraint("ck_suscripcion_pago", "(proveedor_pago IS NULL) = (referencia_pago IS NULL)\r\nAND (pago_confirmado_en IS NULL OR (referencia_pago IS NOT NULL AND importe_pagado IS NOT NULL))\r\nAND (importe_pagado IS NULL OR importe_pagado >= 0)");
 
                             t.HasCheckConstraint("ck_suscripcion_vigencia", "hasta > desde");
                         });
@@ -317,7 +378,7 @@ namespace Adminstracion.Migrations
 
                     b.ToTable("usuario_rol", "admin", t =>
                         {
-                            t.HasCheckConstraint("ck_usuario_rol_alcance", "(alcance = 'GLOBAL' AND tenant_id IS NULL AND token_ref IS NULL)\nOR (alcance = 'TENANT' AND tenant_id IS NOT NULL AND token_ref IS NULL)\nOR (alcance = 'TOKEN' AND tenant_id IS NOT NULL AND token_ref IS NOT NULL)");
+                            t.HasCheckConstraint("ck_usuario_rol_alcance", "(alcance = 'GLOBAL' AND tenant_id IS NULL AND token_ref IS NULL)\r\nOR (alcance = 'TENANT' AND tenant_id IS NOT NULL AND token_ref IS NULL)\r\nOR (alcance = 'TOKEN' AND tenant_id IS NOT NULL AND token_ref IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_usuario_rol_fechas", "fecha_eliminacion >= fecha_creacion");
 
@@ -340,6 +401,24 @@ namespace Adminstracion.Migrations
                     b.Navigation("PlanDestino");
 
                     b.Navigation("PlanOrigen");
+                });
+
+            modelBuilder.Entity("Adminstracion.Dominio.InvitacionRevisionCanjeada", b =>
+                {
+                    b.HasOne("Adminstracion.Dominio.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Adminstracion.Dominio.SesionOAuth", b =>
+                {
+                    b.HasOne("Adminstracion.Dominio.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Adminstracion.Dominio.Suscripcion", b =>

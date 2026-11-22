@@ -12,7 +12,8 @@ using Npgsql;
 [Route("api/[controller]")]
 [ApiController]
 public class UsuariosController(AdminContext context, AprovisionarTenant aprovisionador,
-    IPasswordHasher<Usuario> passwordHasher, IWebHostEnvironment environment) : ControllerBase
+    IPasswordHasher<Usuario> passwordHasher, IWebHostEnvironment environment, SesionDemo sesiones,
+    InvitacionesRevision invitaciones) : ControllerBase
 {
     private IQueryable<Usuario> Usuarios() => context.Usuario.AsNoTracking();
 
@@ -77,7 +78,12 @@ public class UsuariosController(AdminContext context, AprovisionarTenant aprovis
     [EnableRateLimiting("cuentas")]
     public async Task<IActionResult> PostUsuario(RegistroUsuario registro, CancellationToken ct)
     {
-        if (environment.IsEnvironment("Piloto") && registro.Contrasenia.Length < 12)
+        if (sesiones.SoloOAuth) return NotFound();
+        var codigo = registro.CodigoRevisor?.Trim();
+        if (registro.CodigoRevisor is not null && string.IsNullOrEmpty(codigo))
+            return BadRequest(InvitacionesRevision.MensajeInvalida);
+        if (codigo is not null && !sesiones.Disponible(HttpContext)) return NotFound();
+        if ((environment.IsEnvironment("Piloto") || !string.IsNullOrEmpty(codigo)) && registro.Contrasenia.Length < 12)
             return BadRequest("Usa una contraseña de al menos 12 caracteres.");
         var ci = registro.CI.Trim();
         var nombre = registro.Nombre.Trim();
@@ -94,6 +100,7 @@ public class UsuariosController(AdminContext context, AprovisionarTenant aprovis
 
         var usuario = new Usuario
         {
+            id = Guid.NewGuid(),
             nombres = nombre,
             apellidos = registro.Apellidos?.Trim() ?? "",
             ci = ci,
@@ -101,9 +108,14 @@ public class UsuariosController(AdminContext context, AprovisionarTenant aprovis
         };
         usuario.contrasenia_hash = passwordHasher.HashPassword(usuario, registro.Contrasenia);
         context.Usuario.Add(usuario);
+        await using var tx = string.IsNullOrEmpty(codigo) ? null : await context.Database.BeginTransactionAsync(ct);
         try
         {
+            if (tx is not null && !await invitaciones.PrepararCanjeAsync(codigo!, usuario, ct))
+                return BadRequest(InvitacionesRevision.MensajeInvalida);
+
             await context.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException
             { SqlState: PostgresErrorCodes.UniqueViolation })

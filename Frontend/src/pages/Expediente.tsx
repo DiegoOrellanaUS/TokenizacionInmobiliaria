@@ -6,6 +6,7 @@ import { useAccion, useDatos } from '../hooks'
 import { useSesion } from '../session'
 import { Button, Campo, ErrorBox, Estado } from '../ui/atoms'
 import { PageTitle, Progreso } from '../ui/molecules'
+import { enlaceActivo } from '../ui/Stellar'
 
 export function Expediente() {
   const { id } = useParams()
@@ -19,13 +20,15 @@ export function Expediente() {
   const puedeEmitir = estado === 'APROBADO'
   const token = useDatos<Emision>(puedeEmitir ? rutaToken + '/Buscar' : null, sesion, 4000)
   const catalogo = useDatos<Oferta[]>(token.data?.estado === 'CONFIRMADA' ? '/api/Ofertas/Catalogo' : null, undefined, 8000)
-  const oferta = catalogo.data?.find(o => o.inmuebleId === id)
+  const [publicada, setPublicada] = useState<Oferta>()
+  const oferta = publicada?.inmuebleId === id ? publicada : catalogo.data?.find(o => o.inmuebleId === id)
   const action = useAccion()
   const [titulares, definirTitulares] = useState<number[]>([0])
   const [siguiente, setSiguiente] = useState(1)
   const [modificarFicha, setModificarFicha] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
   const pendiente = token.data?.estado === 'PENDIENTE'
+  const urlActivo = token.data?.estado === 'CONFIRMADA' ? enlaceActivo(token.data) : null
   const refrescarToken = token.refresh
   const recibirToken = token.recibir
 
@@ -72,7 +75,10 @@ export function Expediente() {
   function guardar(path: string, method: string, body?: unknown) {
     void action.ejecutar(async () => {
       try {
-        await api(path, { method, body, sesion })
+        if (path.endsWith('/Publicar'))
+          setPublicada(await api<Oferta>(path, { method, body, sesion }))
+        else
+          await api(path, { method, body, sesion })
         setConfirmar(false)
       } finally {
         ficha.refresh()
@@ -201,6 +207,7 @@ export function Expediente() {
           {pendiente && <p role="status">Consultando la confirmación en Stellar Testnet…</p>}
           {!token.data && token.status !== 404 && <ErrorBox text={token.error}/>}
           {token.data && <><span role="status"><Estado value={token.data.estado}/></span><p>{token.data.unidades} {token.data.codigo} · Stellar Testnet</p>
+            {urlActivo && <a className="text-button" target="_blank" rel="noreferrer" href={urlActivo}>Ver activo en Stellar <ArrowUpRight size={16}/></a>}
             {token.data.hash && <a className="text-button" target="_blank" rel="noreferrer" href={'https://stellar.expert/explorer/testnet/tx/' + token.data.hash}>Ver transacción <ArrowUpRight size={16}/></a>}</>}
           {!token.data && token.status === 404 && <form className="form-stack" onSubmit={e => {
             e.preventDefault()

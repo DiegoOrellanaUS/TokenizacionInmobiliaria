@@ -99,8 +99,8 @@ public class UsuarioRolController(AdminContext context, IWebHostEnvironment envi
             return Conflict("El rol seleccionado no está disponible para asignación manual.");
 
         var alcance = registro.TokenRef.HasValue ? "TOKEN" : registro.TenantId.HasValue ? "TENANT" : "GLOBAL";
-        if (rol.codigo == "SUPER_ADMIN" && alcance != "GLOBAL")
-            return BadRequest("SUPER_ADMIN requiere alcance global.");
+        if (rol.codigo == "SUPER_ADMIN")
+            return StatusCode(403, "El rol SUPER_ADMIN se concede por administración de la base de datos.");
         if (rol.codigo is ("ADMIN_TOKEN" or "CLIENTE_TOKEN" or "ACCIONISTA_TOKEN") && alcance != "TOKEN")
             return BadRequest("Este rol requiere un tenant y una referencia de token.");
 
@@ -155,6 +155,8 @@ public class UsuarioRolController(AdminContext context, IWebHostEnvironment envi
         ).FirstOrDefaultAsync(ct);
         if (codigo == null)
             return NotFound("La asignación no fue encontrada.");
+        if (codigo == "SUPER_ADMIN")
+            return StatusCode(403, "El rol SUPER_ADMIN se revoca por administración de la base de datos.");
         if (codigo == TitularTenant)
             return Conflict("El titular del tenant se gestiona en el flujo de suscripción.");
 

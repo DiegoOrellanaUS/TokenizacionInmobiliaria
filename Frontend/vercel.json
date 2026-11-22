@@ -8,11 +8,12 @@
   },
   "headers": [
     {
-      "source": "/:ruta(acceso|espacio|revision|portafolio)/:resto*",
+      "source": "/:ruta(acceso|espacio|revision|portafolio|administracion)/:resto*",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ],
   "rewrites": [
+    { "source": "/evidencia-stellar/casa-prado", "destination": "/evidencia-stellar/casa-prado.html" },
     { "source": "/ofertas/:id", "destination": "/api/vista-oferta?id=:id" },
     { "source": "/planes", "destination": "/api/vista-oferta?pagina=planes" },
     { "source": "/api/:path((?!vista-oferta$).*)", "destination": "https://gateway-production-b9371022.up.railway.app/api/:path*" },

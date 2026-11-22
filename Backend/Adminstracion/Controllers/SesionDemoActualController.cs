@@ -14,7 +14,7 @@ public sealed class SesionDemoActualController(AdminContext context, SesionDemo 
     {
         if (!sesiones.Disponible(HttpContext))
             return NotFound();
-        if (!sesiones.Leer(HttpContext, out var usuarioId))
+        if (await sesiones.LeerAsync(HttpContext, ct) is not { } usuarioId)
             return Unauthorized();
 
         var activo = await (from u in context.Usuario.AsNoTracking()

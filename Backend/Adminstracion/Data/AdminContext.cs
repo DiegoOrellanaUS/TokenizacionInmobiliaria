@@ -11,6 +11,9 @@ public class AdminContext(DbContextOptions<AdminContext> options) : DbContext(op
     public DbSet<UsuarioRol> UsuarioRol => Set<UsuarioRol>();
     public DbSet<Plan> Plan => Set<Plan>();
     public DbSet<Suscripcion> Suscripcion => Set<Suscripcion>();
+    public DbSet<SesionOAuth> SesionesOAuth => Set<SesionOAuth>();
+
+    public DbSet<InvitacionRevisionCanjeada> InvitacionesRevision => Set<InvitacionRevisionCanjeada>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +27,26 @@ public class AdminContext(DbContextOptions<AdminContext> options) : DbContext(op
             e.HasIndex(x => x.ci).IsUnique();
             e.HasIndex(x => x.correo_electronico).IsUnique();
             e.HasIndex(x => new { x.emisor_oidc, x.sujeto_oidc }).IsUnique();
+        });
+
+        modelBuilder.Entity<InvitacionRevisionCanjeada>(e =>
+        {
+            e.ToTable("invitacion_revision_canjeada");
+            e.HasKey(i => i.CodigoHash);
+            e.Property(i => i.CodigoHash).HasMaxLength(64);
+            e.HasIndex(i => i.UsuarioId).IsUnique();
+            e.HasOne<Usuario>().WithMany().HasForeignKey(i => i.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SesionOAuth>(e =>
+        {
+            e.ToTable("sesion_oauth");
+            e.HasKey(s => s.TokenHash);
+            e.Property(s => s.TokenHash).HasMaxLength(64);
+            e.Property(s => s.AccessHash).HasMaxLength(64);
+            e.HasIndex(s => s.AccessHash).IsUnique();
+            e.HasIndex(s => s.FamiliaId);
+            e.HasOne<Usuario>().WithMany().HasForeignKey(s => s.UsuarioId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Tenant>(e =>

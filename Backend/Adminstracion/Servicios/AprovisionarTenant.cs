@@ -12,7 +12,8 @@ public class AprovisionarTenant(AdminContext context, IHttpClientFactory factory
     [
 
         ("inmuebles", "InmueblesOperacion", "https://localhost:7311", true),
-        ("tokenizacion", "Tokenizacion", "https://localhost:7314", true)
+        ("tokenizacion", "Tokenizacion", "https://localhost:7314", true),
+        ("reportes", "Reportes", "https://localhost:7315", true)
     ];
 
     public static Task Bloquear(AdminContext context, string clave, CancellationToken ct) =>

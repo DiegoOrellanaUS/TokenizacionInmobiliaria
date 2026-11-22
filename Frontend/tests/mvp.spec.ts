@@ -23,7 +23,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   const nombre = 'Casa Prado · ' + serie.slice(-6)
   const correo = `titular.${serie}@example.test`
   await page.goto('/acceso')
-  await page.getByRole('button', { name: 'Registrarme' }).click()
+  await page.getByRole('button', { name: 'Crear cuenta', exact: true }).click()
   await page.getByLabel('Nombre', { exact: true }).fill('Alex')
   await page.getByLabel('Apellidos').fill('Demo')
   await page.getByLabel('Documento de identidad').fill(serie)
@@ -43,6 +43,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   expect(pago.servicios).toEqual([
     { servicio: 'inmuebles', estado: 'LISTO' },
     { servicio: 'tokenizacion', estado: 'LISTO' },
+    { servicio: 'reportes', estado: 'LISTO' },
   ])
   await page.getByRole('button', { name: 'Ir a mis inmuebles' }).click()
   await expect(page.getByText(pago.tenantId, { exact: true })).toBeVisible()
@@ -144,7 +145,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
     const correoComprador = 'comprador.' + serie + '@example.test'
     await comprador.goto('/ofertas/' + oferta)
     await comprador.getByRole('link', { name: 'Acceder para comprar' }).click()
-    await comprador.getByRole('button', { name: 'Registrarme' }).click()
+    await comprador.getByRole('button', { name: 'Crear cuenta', exact: true }).click()
     await comprador.getByLabel('Nombre', { exact: true }).fill('Cris')
     await comprador.getByLabel('Documento de identidad').fill('C' + serie)
     await comprador.getByLabel('Correo electrónico').fill(correoComprador)

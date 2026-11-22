@@ -9,7 +9,6 @@ namespace Adminstracion.Servicios;
 public static class InicializarPiloto
 {
     private static readonly Guid RevisorId = new("2036ed4a-8139-40ce-8a0a-f252efa50fa4");
-    private const string RolRevisor = "REVISOR_INMUEBLE";
     private const string PlanPiloto = "UMBRAL-PILOTO";
 
     public static async Task PrepararAsync(WebApplication app)
@@ -39,10 +38,11 @@ public static class InicializarPiloto
                 max_tokens_propios = 3, max_tokens_como_cliente = 10,
             });
 
-        var rol = await context.Rol.SingleOrDefaultAsync(r => r.codigo == RolRevisor, ct);
+        await AprovisionarTenant.Bloquear(context, InvitacionesRevision.ClaveBloqueo, ct);
+        var rol = await context.Rol.SingleOrDefaultAsync(r => r.codigo == InvitacionesRevision.RolRevisor, ct);
         if (rol is null)
         {
-            rol = new Rol { id = Guid.NewGuid(), codigo = RolRevisor, nombre_visible = "Revisor de inmuebles" };
+            rol = new Rol { id = Guid.NewGuid(), codigo = InvitacionesRevision.RolRevisor, nombre_visible = "Revisor de inmuebles" };
             context.Rol.Add(rol);
         }
         if (await context.Usuario.AnyAsync(u => u.correo_electronico == correo && u.id != RevisorId, ct))

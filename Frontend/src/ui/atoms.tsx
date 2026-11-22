@@ -7,7 +7,7 @@ export function Button({ variant = 'primary', className = '', ...props }:
 
 const nombres: Record<string, string> = {
   BORRADOR: 'Borrador', EN_REVISION: 'En revisión', CON_OBSERVACIONES: 'Con observaciones',
-  APROBADO: 'Aprobado', CONFIRMADA: 'Confirmada', FALLIDA: 'Fallida', PENDIENTE: 'Pendiente',
+  APROBADO: 'Aprobado', CONFIRMADA: 'Confirmada', FALLIDA: 'Fallida', CANCELADA: 'Cancelada', PENDIENTE: 'Pendiente',
   ACTIVA: 'Activa', APROVISIONANDO: 'Preparando espacio', LISTO: 'Listo', PUBLICADA: 'Publicada',
 }
 

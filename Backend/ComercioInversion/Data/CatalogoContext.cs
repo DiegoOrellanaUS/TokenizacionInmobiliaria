@@ -26,6 +26,7 @@ public sealed class CatalogoContext(DbContextOptions<CatalogoContext> options) :
         compra.HasOne(c => c.Oferta).WithMany().HasForeignKey(c => c.OfertaId).OnDelete(DeleteBehavior.Restrict);
         compra.HasIndex(c => new { c.CompradorId, c.CreadaEn });
         compra.HasIndex(c => new { c.Estado, c.ReintentarEn });
+        compra.HasIndex(c => c.HashPago).IsUnique();
         compra.Property(c => c.PrecioUnitario).HasPrecision(18, 2);
         compra.Property(c => c.Moneda).HasMaxLength(3);
         oferta.Property(o => o.Moneda).HasMaxLength(3);

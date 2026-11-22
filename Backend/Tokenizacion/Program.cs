@@ -44,6 +44,11 @@ builder.Services.AddHttpClient<RedStellar>(client =>
     client.BaseAddress = new Uri("https://soroban-testnet.stellar.org/");
     client.Timeout = TimeSpan.FromSeconds(15);
 });
+builder.Services.AddHttpClient<VerificarPagoPollar>(client =>
+{
+    client.BaseAddress = new Uri("https://horizon-testnet.stellar.org/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 

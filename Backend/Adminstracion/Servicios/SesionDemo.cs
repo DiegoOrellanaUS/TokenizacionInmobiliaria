@@ -4,35 +4,48 @@ using Microsoft.AspNetCore.DataProtection;
 
 namespace Adminstracion.Servicios;
 
-public sealed class SesionDemo(IDataProtectionProvider provider, IWebHostEnvironment environment, IConfiguration configuration)
+public sealed class SesionDemo(IDataProtectionProvider provider, IWebHostEnvironment environment,
+    IConfiguration configuration, SesionesOAuth oauth)
 {
     private readonly ITimeLimitedDataProtector protector = provider.CreateProtector("TokenizacionInmobiliaria.SesionDemo.v1")
         .ToTimeLimitedDataProtector();
 
+    public bool GitHubHabilitado => configuration.GetValue<bool>("GitHubOAuth:Habilitado");
+    public bool FacebookHabilitado => configuration.GetValue<bool>("FacebookOAuth:Habilitado");
+    public bool SoloOAuth => GitHubHabilitado || FacebookHabilitado;
+
     public bool Disponible(HttpContext http) =>
-        environment.IsEnvironment("Piloto") ||
+        SoloOAuth || environment.IsEnvironment("Piloto") ||
         (environment.IsDevelopment() && configuration.GetValue<bool>("SesionDemo:Habilitada") &&
          http.Connection.RemoteIpAddress is { } remote && IPAddress.IsLoopback(remote));
 
-    public string Emitir(Guid usuarioId) => protector.Protect(usuarioId.ToString("D"), TimeSpan.FromHours(2));
+    private const string IdentidadVerificada = ":pwd";
 
-    public bool Leer(HttpContext http, out Guid usuarioId)
+    public string Emitir(Guid usuarioId, bool identidadVerificada) =>
+        protector.Protect(usuarioId.ToString("D") + (identidadVerificada ? IdentidadVerificada : ""), TimeSpan.FromHours(2));
+
+    public async Task<Guid?> LeerAsync(HttpContext http, CancellationToken ct, bool exigirIdentidad = false)
     {
-        usuarioId = Guid.Empty;
         if (!Disponible(http) || http.Request.Headers.Authorization.Count != 1)
-            return false;
+            return null;
 
         var header = http.Request.Headers.Authorization.ToString();
         if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) || header.Length > 2048)
-            return false;
+            return null;
 
+        if (SoloOAuth) return await oauth.ValidarAsync(header[7..], ct);
         try
         {
-            return Guid.TryParse(protector.Unprotect(header[7..]), out usuarioId) && usuarioId != Guid.Empty;
+            var contenido = protector.Unprotect(header[7..]);
+            var verificada = contenido.EndsWith(IdentidadVerificada, StringComparison.Ordinal);
+            if (exigirIdentidad && !verificada) return null;
+            var identidad = verificada ? contenido[..^IdentidadVerificada.Length] : contenido;
+            return Guid.TryParseExact(identidad, "D", out var usuarioId) && usuarioId != Guid.Empty
+                ? usuarioId : null;
         }
         catch (CryptographicException)
         {
-            return false;
+            return null;
         }
     }
 }

@@ -5,13 +5,15 @@ import { useAccion, useDatos } from '../hooks'
 import { useSesion } from '../session'
 import { Button, Campo, ErrorBox, Estado } from '../ui/atoms'
 import { Empty, PageTitle } from '../ui/molecules'
+import { ComprobantesCompra } from '../ui/ComprobantesCompra'
+import { idCasaPrado } from '../ui/Stellar'
+import { CompraPollar } from './CompraPollar'
 
-function Tx({ compra }: { compra: Compra }) {
-  return compra.hash && compra.estado === 'CONFIRMADA' ? <a className="text-button"
-    href={'https://stellar.expert/explorer/testnet/tx/' + compra.hash} target="_blank" rel="noreferrer">Ver transferencia</a> : null
+export function CompraOferta(props: { oferta: Oferta; actualizarOferta: () => void }) {
+  return props.oferta.id === idCasaPrado ? <CompraPollar {...props}/> : <CompraSimulada {...props}/>
 }
 
-export function CompraOferta({ oferta, actualizarOferta }: { oferta: Oferta; actualizarOferta: () => void }) {
+function CompraSimulada({ oferta, actualizarOferta }: { oferta: Oferta; actualizarOferta: () => void }) {
   const { sesion } = useSesion()
   const action = useAccion()
   const [cantidad, setCantidad] = useState('1')
@@ -19,11 +21,11 @@ export function CompraOferta({ oferta, actualizarOferta }: { oferta: Oferta; act
   const intento = useRef<{ referencia: string; unidades: number } | null>(null)
   const lock = useRef(false)
   const seguimiento = useDatos<Compra>(compra?.estado === 'PENDIENTE' ? '/api/Compras/Buscar/' + compra.id : null, sesion, 3000)
-  const resultado = seguimiento.data ?? compra
-  const estado = seguimiento.data?.estado
+  const resultado = compra?.estado === 'CANCELADA' ? compra : seguimiento.data ?? compra
+  const estado = resultado?.estado
 
   useEffect(() => {
-    if (estado === 'CONFIRMADA' || estado === 'FALLIDA') actualizarOferta()
+    if (estado === 'CONFIRMADA' || estado === 'FALLIDA' || estado === 'CANCELADA') actualizarOferta()
   }, [estado, actualizarOferta])
 
   if (sesion?.esRevisor) return null
@@ -34,10 +36,18 @@ export function CompraOferta({ oferta, actualizarOferta }: { oferta: Oferta; act
       <div aria-live="polite"><Estado value={resultado.estado}/>
         <p>{resultado.estado === 'PENDIENTE' ? 'Pago simulado registrado. Estamos confirmando la entrega en Stellar Testnet.'
           : resultado.estado === 'CONFIRMADA' ? 'Las unidades ya están en tu portafolio.'
-            : 'La transferencia falló y se liberaron las unidades reservadas.'}</p>
+            : resultado.estado === 'CANCELADA' ? 'Cancelaste la compra y se liberaron las unidades reservadas.'
+              : 'La transferencia falló y se liberaron las unidades reservadas.'}</p>
       </div>
       <ErrorBox text={seguimiento.error}/>
-      <Tx compra={resultado}/>
+      <ComprobantesCompra compra={resultado}/>
+      {resultado.puedeCancelar && <Button type="button" variant="secondary" disabled={action.busy} onClick={() => {
+        void action.ejecutar(async () => {
+          try {
+            setCompra(await api<Compra>('/api/Compras/' + resultado.id + '/Cancelar', { method: 'POST', sesion }))
+          } finally { seguimiento.refresh() }
+        })
+      }}>Cancelar compra</Button>}
       <Link className="button button-primary" to="/portafolio">Ver mi portafolio</Link>
       {resultado.estado !== 'PENDIENTE' && oferta.disponibles > 0 && <Button type="button" variant="secondary" onClick={() => {
         intento.current = null
@@ -100,10 +110,11 @@ export function Portafolio() {
       </section>
       <section className="flow-stack" aria-label="Historial de compras"><h2>Historial de compras</h2>
         {data.map(compra => <article className="panel flow-stack" key={compra.id}>
-          <div className="flex items-center gap-2"><strong>{compra.inmueble}</strong><Estado value={compra.estado}/></div>
-          <p>{compra.unidades} {compra.codigo} · {moneda(compra.total, compra.moneda)} · {fecha(compra.creadaEn)}</p>
+          <div className="flex items-center gap-2"><strong>{compra.inmueble}</strong><Estado value={compra.estado === 'ESPERANDO_PAGO' ? 'Esperando pago' : compra.estado}/></div>
+          <p>{compra.unidades} {compra.codigo} · {compra.totalUsdc ? compra.totalUsdc + ' USDC de prueba' : moneda(compra.total, compra.moneda)} · {fecha(compra.creadaEn)}</p>
           {compra.estado === 'CONFIRMADA' && compra.billetera && <p className="break-all">Billetera Testnet <code>{compra.billetera}</code></p>}
-          <Tx compra={compra}/>
+          {compra.estado === 'ESPERANDO_PAGO' && <Link to={'/ofertas/' + compra.ofertaId}>Continuar pago</Link>}
+          <ComprobantesCompra compra={compra}/>
         </article>)}
       </section>
     </>}

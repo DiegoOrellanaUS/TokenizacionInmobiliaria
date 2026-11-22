@@ -34,7 +34,10 @@ builder.Services.AddRateLimiter(options =>
         limite.Window = TimeSpan.FromMinutes(1);
     });
 });
-builder.Services.AddSingleton<SesionDemo>();
+builder.Services.AddScoped<SesionDemo>();
+builder.Services.AddScoped<SesionesOAuth>();
+builder.Services.AddScoped<PerfilSesion>();
+builder.Services.AddScoped<InvitacionesRevision>();
 builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 
 var app = builder.Build();

@@ -50,9 +50,11 @@ export function RevisionBandeja() {
     </form>}
     {seleccionado && <>
       <p className="muted mb-4">Espacio de {seleccionado.nombre}</p>
-      <div className="segmented flex-wrap" aria-label="Filtrar expedientes">
+      <div className="review-queue" role="group" aria-label="Filtrar expedientes por estado">
         {filtros.map(x => <button type="button" aria-pressed={x.id === filtro}
-          onClick={() => setFiltro(x.id)} key={x.id}>{x.label} ({expedientes.filter(i => i.estadoRevision === x.id).length})</button>)}
+          onClick={() => setFiltro(x.id)} key={x.id}>
+          {x.label} <strong>{expedientes.filter(i => i.estadoRevision === x.id).length}</strong>
+        </button>)}
       </div>
       <ErrorBox text={bandeja.error}/>
       {bandeja.loading && <p role="status">Cargando expedientes…</p>}
@@ -104,7 +106,7 @@ export function RevisionDetalle() {
           </section>
         </div>
         <aside className="flow-stack">
-          <section className="panel"><h2 className="flex items-center gap-2"><ClipboardCheck size={21}/> Dictamen</h2>
+          <section className="panel review-decision"><h2 className="flex items-center gap-2"><ClipboardCheck size={21}/> Dictamen</h2>
             {estado === 'EN_REVISION' && expediente.envioId ? <form className="form-stack" key={expediente.envioId}
                onSubmit={e => {
                 e.preventDefault()

@@ -53,8 +53,8 @@ public class SubscripcionesController(AdminContext context, AprovisionarTenant a
         if (!piloto && !environment.IsDevelopment())
             return NotFound();
 
-        if ((piloto || Request.Headers.ContainsKey("Authorization")) &&
-            (!sesiones.Leer(HttpContext, out var usuarioSesion) || usuarioSesion != registro.UsuarioId))
+        if ((piloto || sesiones.SoloOAuth || Request.Headers.ContainsKey("Authorization")) &&
+            (await sesiones.LeerAsync(HttpContext, ct) != registro.UsuarioId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
         var codigo = registro.CodigoPlan.Trim();

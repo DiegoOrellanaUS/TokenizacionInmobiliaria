@@ -18,5 +18,8 @@ namespace Adminstracion.DTOs
         [Required, StringLength(128)]
         public string Contrasenia { get; set; } = null!;
 
+        [StringLength(128)]
+        public string? CodigoRevisor { get; set; }
+
     }
 }

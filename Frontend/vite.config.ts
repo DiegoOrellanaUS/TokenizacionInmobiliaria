@@ -15,6 +15,10 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
-    server: { port: 5173, strictPort: true },
+    server: {
+      port: 5173,
+      strictPort: true,
+      proxy: { '/api/Auth': 'http://localhost:7320' },
+    },
   }
 })

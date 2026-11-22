@@ -1,4 +1,3 @@
-
 using Microsoft.EntityFrameworkCore;
 
 namespace ComercioInversion.Data;
@@ -29,13 +28,15 @@ public sealed class LiquidarComprasDemo(IServiceScopeFactory scopes, IHttpClient
         var context = scope.ServiceProvider.GetRequiredService<CatalogoContext>();
         await scope.ServiceProvider.GetRequiredService<PrepararCatalogo>().Ejecutar(context, ct);
         var ahora = DateTimeOffset.UtcNow;
-        var candidatas = await context.Compras.AsNoTracking().Where(c => c.Estado == "PENDIENTE" && c.ReintentarEn <= ahora)
+        var candidatas = await context.Compras.AsNoTracking().Where(c => c.Estado == "PENDIENTE" && c.ReintentarEn <= ahora &&
+                (c.OfertaId != CompraDemo.OfertaCasaPrado || c.HashPago != null && c.LedgerPago != null))
             .OrderBy(c => c.ReintentarEn).Take(10).Include(c => c.Oferta).ToListAsync(ct);
         foreach (var compra in candidatas)
         {
             var inicio = DateTimeOffset.UtcNow;
             var adquirida = await context.Compras.Where(c => c.Id == compra.Id && c.Estado == "PENDIENTE" && c.ReintentarEn <= inicio)
-                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ReintentarEn, inicio.AddMinutes(2)), ct);
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ReintentarEn, inicio.AddMinutes(2))
+                    .SetProperty(c => c.TransferenciaIniciada, true), ct);
             if (adquirida == 0)
                 continue;
 
@@ -57,6 +58,8 @@ public sealed class LiquidarComprasDemo(IServiceScopeFactory scopes, IHttpClient
         request.Content = JsonContent.Create(new
         {
             compra.Oferta.InmuebleId, compra.CompradorId, compra.Unidades,
+            Pago = compra.HashPago is null ? null : new CompraDemo.EvidenciaPago(compra.HashPago,
+                compra.PagadorUsdc!, compra.DestinoUsdc!, compra.PrecioUnitario * compra.Unidades, compra.CreadaEn),
         });
         using var response = await client.SendAsync(request, ct);
         var resultado = response.IsSuccessStatusCode

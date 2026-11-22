@@ -12,18 +12,39 @@ namespace Tokenizacion.Controllers;
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("interno/tenants/{tenantId:guid}/compras-demo")]
 public sealed class ComprasDemoInternasController(TenantContext tenant, PrepararSiloTokenizacion silo,
-    IWebHostEnvironment environment, IConfiguration configuration) : ControllerBase
+    IWebHostEnvironment environment, IConfiguration configuration, VerificarPagoPollar verificarPago) : ControllerBase
 {
+    [HttpGet("pollar")]
+    public IActionResult ConfiguracionPollar(Guid tenantId)
+    {
+        if (!Autorizada() || tenantId == Guid.Empty) return NotFound();
+        var clavePublica = configuration["Pollar:ClavePublica"];
+        var destino = configuration["Pollar:Destino"];
+        var precioUnitario = configuration.GetValue("Pollar:PrecioUsdc", 1m);
+        if (string.IsNullOrWhiteSpace(clavePublica) || !VerificarPagoPollar.EsCuenta(destino) ||
+            precioUnitario is <= 0 or > 10000 || decimal.Round(precioUnitario, 2) != precioUnitario)
+            return StatusCode(503, "El pago Pollar en Testnet aún no está configurado.");
+        return Ok(new { clavePublica, destino, emisor = VerificarPagoPollar.EmisorUsdc, precioUnitario });
+    }
+
+    [HttpPost("{compraId:guid}/pago")]
+    public async Task<IActionResult> ConfirmarPago(Guid tenantId, Guid compraId, VerificarPagoPollar.Evidencia pago, CancellationToken ct)
+    {
+        if (!Autorizada() || tenantId == Guid.Empty || compraId == Guid.Empty)
+            return NotFound();
+        var resultado = await verificarPago.Ejecutar(compraId, pago, ct);
+        return Ok(resultado);
+    }
+
     [HttpPost("{compraId:guid}")]
     public async Task<IActionResult> Liquidar(Guid tenantId, Guid compraId, Solicitud compra, CancellationToken ct)
     {
-        var clave = configuration["Comercio:ClaveLiquidacionDemo"];
-        if ((!environment.IsDevelopment() && !environment.IsEnvironment("Piloto")) || string.IsNullOrWhiteSpace(clave) ||
-            !Request.Headers.TryGetValue("X-Liquidacion-Demo", out var recibida) || recibida.Count != 1 ||
-            !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(clave), Encoding.UTF8.GetBytes(recibida.ToString())))
-            return NotFound();
+        if (!Autorizada()) return NotFound();
         if (tenantId == Guid.Empty || compraId == Guid.Empty || compra.InmuebleId == Guid.Empty || compra.CompradorId == Guid.Empty)
             return BadRequest("La solicitud contiene un identificador inválido.");
+
+        if (compra.InmuebleId == VerificarPagoPollar.InmuebleCasaPrado && compra.Pago is null)
+            return Conflict("Casa Prado requiere un pago USDC confirmado.");
 
         tenant.TenantId = tenantId;
         var context = HttpContext.RequestServices.GetRequiredService<TokenizacionContext>();
@@ -31,6 +52,8 @@ public sealed class ComprasDemoInternasController(TenantContext tenant, Preparar
         var servicio = HttpContext.RequestServices.GetRequiredService<TransferirCompraDemo>();
         try
         {
+            if (compra.Pago is not null && (await verificarPago.Ejecutar(compraId, compra.Pago, ct)).Ledger is null)
+                return Conflict("El pago USDC aún no está confirmado.");
             var t = await servicio.Ejecutar(tenantId, compraId, compra.InmuebleId, compra.CompradorId, compra.Unidades, ct);
             return Ok(new { t.Estado, t.Hash, t.Billetera, t.Ledger });
         }
@@ -45,6 +68,15 @@ public sealed class ComprasDemoInternasController(TenantContext tenant, Preparar
         }
     }
 
+    private bool Autorizada()
+    {
+        var clave = configuration["Comercio:ClaveLiquidacionDemo"];
+        return (environment.IsDevelopment() || environment.IsEnvironment("Piloto")) && !string.IsNullOrWhiteSpace(clave) &&
+            Request.Headers.TryGetValue("X-Liquidacion-Demo", out var recibida) && recibida.Count == 1 &&
+            CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(clave), Encoding.UTF8.GetBytes(recibida.ToString()));
+    }
+
     public sealed record Solicitud(Guid InmuebleId, Guid CompradorId,
-        [Range(typeof(long), "1", "922337203685", ParseLimitsInInvariantCulture = true)] long Unidades);
+        [Range(typeof(long), "1", "922337203685", ParseLimitsInInvariantCulture = true)] long Unidades,
+        VerificarPagoPollar.Evidencia? Pago);
 }

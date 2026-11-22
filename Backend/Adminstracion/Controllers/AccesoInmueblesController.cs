@@ -15,7 +15,7 @@ namespace Adminstracion.Controllers;
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("interno/inmuebles")]
 public class AccesoInmueblesController(
-    AdminContext context, IPasswordHasher<Usuario> hasher, IConfiguration configuration, SesionDemo sesiones) : ControllerBase
+    AdminContext context, IPasswordHasher<Usuario> hasher, IConfiguration configuration, SesionDemo sesiones, PerfilSesion perfiles) : ControllerBase
 {
     [HttpGet("{tenantId:guid}/acceso")]
     public async Task<IActionResult> GetAcceso(Guid tenantId, CancellationToken ct)
@@ -26,9 +26,12 @@ public class AccesoInmueblesController(
             !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(clave), Encoding.UTF8.GetBytes(recibida.ToString())))
             return NotFound();
 
-        var esSesionDemo = sesiones.Leer(HttpContext, out var usuarioId);
+        var autenticado = await sesiones.LeerAsync(HttpContext, ct);
+        var esSesionDemo = autenticado.HasValue;
+        var usuarioId = autenticado.GetValueOrDefault();
         var password = string.Empty;
-        if (!esSesionDemo && !LeerCredenciales(Request.Headers.Authorization.ToString(), out usuarioId, out password))
+        if (!esSesionDemo && (sesiones.SoloOAuth ||
+            !LeerCredenciales(Request.Headers.Authorization.ToString(), out usuarioId, out password)))
             return Unauthorized();
 
         var usuario = await (from u in context.Usuario.AsNoTracking()
@@ -62,13 +65,7 @@ public class AccesoInmueblesController(
                    where r.tenant_id == tenantId && r.alcance == "TENANT" && r.Rol.codigo == "TITULAR_TENANT"
                    select r.id).AnyAsync(ct);
 
-        // Los revisores se habilitan por configuración, además de su rol.
-        var autorizadoComoRevisor = configuration.GetSection("Inmuebles:Revisores").Get<string[]>()?
-            .Any(valor => Guid.TryParse(valor, out var id) && id == usuarioId) == true;
-        var esRevisor = tenant.propietario_id != usuarioId && autorizadoComoRevisor &&
-            await (from r in roles
-                   where r.alcance == "GLOBAL" && (r.Rol.codigo == "REVISOR_INMUEBLE" || r.Rol.codigo == "SUPER_ADMIN")
-                   select r.id).AnyAsync(ct);
+        var esRevisor = tenant.propietario_id != usuarioId && await perfiles.EsRevisor(usuarioId, ct);
 
         if (!esTitular && !esRevisor)
             return StatusCode(StatusCodes.Status403Forbidden);

@@ -2,6 +2,10 @@
 
 Interfaz de demostración para TokenizacionInmobiliaria. El catálogo es público. El espacio privado usa la sesión simulada de Admin y envía `X-Tenant` a los servicios de negocio.
 
+## Evidencia Stellar para el jurado
+
+La [evidencia de Casa Prado en Testnet](public/evidencia-stellar/casa-prado.html) reúne la emisión, la compra de prueba y el enlace al activo exacto. La ruta pública configurada en Vercel es `/evidencia-stellar/casa-prado`.
+
 ## Puesta en marcha
 
 1. Inicia Admin, Inmuebles, Tokenización, Comercio y Gateway con sus perfiles HTTPS de desarrollo. El perfil de Admin activa `SesionDemo__Habilitada` para conexiones locales.

@@ -73,13 +73,26 @@ static bool EsRutaPiloto(HttpRequest request)
         return true;
 
     if (HttpMethods.IsGet(request.Method) &&
-        (path == "/api/Planes/Listar" || path == "/api/SesionDemo/EspaciosRevision"))
+        (path == "/api/Planes/Listar" || path == "/api/SesionDemo/EspaciosRevision" ||
+         path == "/api/SesionDemo/Modo" || path == "/api/SesionDemo/CodigoRevisionDemo" ||
+         path == "/api/Auth/GitHub/Estado" ||
+         path == "/api/Auth/GitHub/Iniciar" || path == "/api/Auth/GitHub/Callback" ||
+         path == "/api/Auth/Facebook/Estado" || path == "/api/Auth/Facebook/Iniciar" ||
+         path == "/api/Auth/Facebook/Callback"))
         return true;
+
+    if (HttpMethods.IsPost(request.Method) &&
+        (path == "/api/Auth/GitHub/Refrescar" || path == "/api/Auth/GitHub/Salir" ||
+         path == "/api/Auth/Sesion/Refrescar" || path == "/api/Auth/Sesion/Salir" ||
+         path == "/api/Auth/GitHub/RegistrarRevisor" || path == "/api/Auth/Facebook/RegistrarRevisor"))
+        return true;
+
+    if (path == "/api/Global/Catalogo" || path.StartsWithSegments("/api/Global/Activos") || path == "/api/Global/Panel" || path == "/api/Global/Panel/excel" ||
+        path == "/api/Global/Panel/pdf" || path.StartsWithSegments("/api/Reportes"))
+        return HttpMethods.IsGet(request.Method);
 
     return path.StartsWithSegments("/api/Inmuebles") ||
         path.StartsWithSegments("/api/Tokenizacion/Inmuebles") ||
         path.StartsWithSegments("/api/Ofertas") ||
         path.StartsWithSegments("/api/Compras");
 }
-
-

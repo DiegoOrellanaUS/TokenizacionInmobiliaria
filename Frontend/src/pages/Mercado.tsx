@@ -6,6 +6,7 @@ import { useDatos } from '../hooks'
 import { ErrorBox, Estado } from '../ui/atoms'
 import { Empty, FotoOferta, OfertaCard, PageTitle } from '../ui/molecules'
 import { CompraOferta } from './Portafolio'
+import { EnlaceActivo, idCasaPrado, rutaEvidencia } from '../ui/Stellar'
 
 export function Mercado() {
   const { data, error, loading } = useDatos<Oferta[]>('/api/Ofertas/Catalogo', undefined, 8000)
@@ -83,9 +84,11 @@ export function DetalleOferta() {
           <dl className="facts"><div><dt>Precio por unidad</dt><dd>{moneda(oferta.precio, oferta.moneda)}</dd></div>
             <div><dt>Unidades ofrecidas</dt><dd>{oferta.unidades}</dd></div>
             <div><dt>Disponibles</dt><dd role="status" aria-label="Unidades disponibles">{oferta.disponibles}</dd></div>
-            <div><dt>Activo</dt><dd>{oferta.codigo}</dd></div>
+            <div><dt>Activo</dt><dd>{oferta.codigo} <EnlaceActivo oferta={oferta} resolver/></dd></div>
             <div><dt>Fecha de publicación</dt><dd>{fecha(oferta.publicadaEn)}</dd></div>
-          </dl></section>
+          </dl>
+          {oferta.id === idCasaPrado && <a className="text-button" href={rutaEvidencia}>Ver evidencia de emisión y compra</a>}
+          </section>
           <CompraOferta key={oferta.id} oferta={oferta} actualizarOferta={refresh}/>
         </aside>
       </div>

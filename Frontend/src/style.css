@@ -129,3 +129,78 @@
   .access-wrap { margin-inline: 1.25rem; }
   .property-list .status { max-width: 8rem; }
 }
+
+@layer components {
+  .review-invitation { @apply grid gap-3 rounded-xl border border-[#c6d9ef] bg-[#edf5ff] p-3.5 text-[#183960]; }
+  .review-choice { @apply flex cursor-pointer items-center gap-2 text-sm font-semibold; }
+  .review-choice input { @apply size-4 shrink-0 accent-[#235ba3]; }
+  .review-code-help { @apply flex flex-wrap items-center justify-between gap-2; }
+
+  .review-site { @apply min-h-dvh bg-[#edf2fa] text-[#182d4b]; }
+  .review-header { @apply flex flex-wrap items-center justify-between gap-3 bg-[#142948] px-5 py-4 text-white sm:px-8; }
+  .review-brand { @apply flex items-center gap-3 font-semibold; }
+  .review-brand svg { @apply size-9 rounded-lg bg-[#24456e] p-2 text-[#d9eafe]; }
+  .review-brand span { @apply flex flex-col; }
+  .review-brand small { @apply text-xs font-medium text-[#c4d7ef]; }
+  .review-account { @apply flex items-center gap-2 rounded-lg border border-[#5f7593] px-3 py-2 text-sm hover:bg-[#24456e]; }
+  .review-header :focus-visible, .review-nav :focus-visible { outline-color: #9ccaff; }
+  .review-layout { @apply grid lg:min-h-[calc(100dvh-68px)] lg:grid-cols-[224px_minmax(0,1fr)]; }
+  .review-nav { @apply flex items-center gap-2 bg-[#1b365a] px-5 py-2 text-sm text-[#e8f0ff] lg:flex-col lg:items-stretch lg:px-4 lg:py-8; }
+  .review-nav a { @apply flex items-center gap-2 rounded-lg bg-[#2d5280] px-3 py-2.5 font-semibold; }
+  .review-layout main { @apply min-w-0 pb-10; }
+  .review-layout h1, .review-layout h2 { @apply font-sans font-semibold; }
+  .review-layout h1 { @apply text-3xl sm:text-4xl; }
+  .review-layout .section-title p, .review-layout .muted { color: #435875; }
+  .review-layout .panel, .review-layout .property-list { @apply border-[#ccd9eb] bg-white; }
+  .review-layout .property-list a:hover { background: #e9f2ff; }
+  .review-layout .property-icon { @apply bg-[#dfebfb] text-[#244e84]; }
+  .review-layout .button, .review-layout .segmented { @apply rounded-lg; }
+  .review-layout .button-primary { @apply bg-[#225293] hover:bg-[#183d70]; }
+  .review-layout .button-secondary { @apply border-[#a5b9d2] bg-white text-[#244e84] hover:border-[#244e84]; }
+  .review-layout .back-link, .review-layout .text-button { color: #244e84; }
+  .review-queue { @apply mb-5 grid gap-2 sm:grid-cols-3; }
+  .review-queue button { @apply flex items-center justify-between gap-2 rounded-xl border border-[#c8d6e8] bg-white p-3 text-left text-sm font-semibold text-[#2a4b74] hover:bg-[#e5effe]; }
+  .review-queue button[aria-pressed="true"] { @apply border-[#235ba3] bg-[#dfebfd] text-[#163c72]; }
+  .review-queue strong { @apply rounded-md bg-[#edf3fe] px-2 py-1 text-base tabular-nums; }
+  .review-layout .review-decision { @apply border-[#96b3d9] bg-[#f8fbff]; }
+}
+
+@layer components {
+  .kpi-pagina { @apply pb-8; }
+  .kpi-descargas { @apply flex flex-wrap gap-2; }
+  .kpi-resumen { @apply grid grid-cols-2 gap-3 lg:grid-cols-4; }
+  .kpi-resumen > div { @apply p-4; }
+  .kpi-resumen dt { @apply text-sm font-medium text-[#4b6358]; }
+  .kpi-resumen dd { @apply mt-2 text-xl font-semibold tabular-nums text-pine sm:text-2xl; }
+  .kpi-graficas { @apply grid gap-4 lg:grid-cols-3; }
+  .kpi-grafica { @apply grid content-start gap-4; }
+  .kpi-grafica h2 { @apply flex items-center gap-2 text-2xl; }
+  .kpi-grafica h2 svg { @apply shrink-0 text-pine; }
+  .kpi-grafica ul { @apply grid gap-2; }
+  .kpi-grafica li { @apply grid grid-cols-[minmax(6.5rem,1fr)_minmax(3rem,1fr)_auto] items-center gap-2 text-xs sm:text-sm; }
+  .kpi-grafica meter { @apply h-3 w-full; }
+  .kpi-grafica meter::-webkit-meter-bar { background: #e4ece3; border: 0; }
+  .kpi-grafica meter::-webkit-meter-optimum-value { background: #356d59; }
+  .kpi-grafica meter::-moz-meter-bar { background: #356d59; }
+  .kpi-grafica figcaption { @apply text-sm leading-relaxed text-[#4b6358]; }
+  .kpi-tabla { @apply overflow-x-auto; }
+  .kpi-tabla table { @apply w-full border-collapse text-left text-sm; }
+  .kpi-tabla th, .kpi-tabla td { @apply px-3 py-2.5 align-top; }
+  .kpi-tabla td { @apply whitespace-nowrap tabular-nums; }
+  .kpi-tabla thead { @apply bg-[#e8efe5] text-pine; }
+  .kpi-tabla tbody tr:nth-child(even) { @apply bg-[#f2f5ee]; }
+  .kpi-tabla small { @apply block text-[#4b6358]; }
+  .kpi-emisor { @apply max-w-40 break-all font-mono text-xs; }
+}
+
+@layer components {
+  .global-site { @apply bg-[#f1f4f2]; }
+  .global-header { @apply bg-[#133c37]; }
+  .global-header .review-brand svg { @apply bg-[#2e5550] text-[#e4fff5]; }
+  .global-header nav { @apply order-3 w-full text-sm font-medium text-[#e4fff5] sm:order-none sm:w-auto; }
+  .global-header nav a:hover { @apply underline; }
+  .global-header .review-account { @apply hover:bg-[#2e5550]; }
+  .kpi-resumen-global { @apply md:grid-cols-3 xl:grid-cols-6; }
+  .kpi-graficas-global { @apply md:grid-cols-2 lg:grid-cols-2; }
+  .kpi-compras-global { @apply grid gap-4 lg:grid-cols-[1fr_1.65fr]; }
+}

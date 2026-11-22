@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, MapPin, Plus } from 'lucide-react'
 import { fotoDeOferta, moneda, type Oferta } from '../api'
 import { Estado } from './atoms'
+import { EnlaceActivo } from './Stellar'
 
 export function PageTitle({ title, description, children }: { title: string; description?: string; children?: ReactNode }) {
   return <header className="section-title">
@@ -39,6 +40,7 @@ export function OfertaCard({ oferta }: { oferta: Oferta }) {
       <h3><Link to={'/ofertas/' + oferta.id}>{oferta.nombre} <ArrowUpRight size={19}/></Link></h3>
       <dl><div><dt>Por unidad</dt><dd>{moneda(oferta.precio, oferta.moneda)}</dd></div>
         <div><dt>Disponibles</dt><dd>{oferta.disponibles}</dd></div></dl>
+      <EnlaceActivo oferta={oferta}/>
     </div>
   </article>
 }

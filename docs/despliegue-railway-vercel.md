@@ -121,3 +121,47 @@ Si quieres apuntar el navegador directamente a otro Gateway, configura `VITE_API
 3. Registra una cuenta con una contraseña, selecciona el plan piloto, crea el inmueble y entra con el usuario revisor desde otra sesión. Aprueba el expediente, emite, publica y completa una compra de prueba desde una segunda cuenta.
 
 El piloto usa una base nueva y Stellar Testnet. Para trasladar ofertas ya emitidas desde otra instalación hay que conservar sus bases y las identidades de Stellar correspondientes.
+
+### Indicadores del tenant
+
+Añade el servicio privado **reportes** con directorio raíz `/Backend/Reportes`, puerto interno 8080 y entorno `Piloto` en Railway. Configura:
+
+- **reportes**: `ConnectionStrings__ReportesContext` con PostgreSQL y un usuario que pueda crear bases. Usa `Reportes__BaseMantenimiento` si la base administrativa es distinta de `postgres`.
+- **reportes**: `Reportes__AdminUrl`, `Reportes__InmueblesUrl`, `Reportes__TokenizacionUrl` y `Reportes__ComercioUrl` con los orígenes privados correspondientes. Configura `Inmuebles__ClaveInterna` con el mismo valor que usa Administración para validar a los titulares.
+- **admin, inmuebles, tokenizacion, comercio y reportes**: el mismo `Reportes__ClaveInterna` para la sincronización. **reportes** usa además la misma `Aprovisionamiento__ClaveInterna` que **admin** para preparar sus silos.
+- **admin**: `Aprovisionamiento__Reportes` con el origen privado de **reportes**. **gateway**: `ReverseProxy__Clusters__reportes__Destinations__principal__Address` con ese mismo origen y barra final.
+
+Mantén activo el servicio **reportes** para que el consumidor procese los eventos en segundo plano. Las migraciones de las fuentes cargan el estado de los registros existentes y encolan cambios posteriores dentro de las transacciones de origen. Reportes confirma cada lote después de guardar sus KPI. La interfaz muestra el progreso de carga al entrar en **Mi espacio → Ver indicadores**.
+
+### Catálogo e indicadores de Global
+
+Añade **global** como servicio privado con raíz `/Backend`, Dockerfile `Global/Dockerfile`, puerto interno 8080 y entorno `Piloto`. Dale una base PostgreSQL propia y configura su conexión en `ConnectionStrings__GlobalContext`. El servicio crea el esquema de proyecciones al conectarse por primera vez.
+
+- **global** necesita `Global__AdminUrl`, `Global__InmueblesUrl`, `Global__TokenizacionUrl` y `Global__ComercioUrl` con los orígenes privados. En desarrollo los puertos por defecto son 7266, 7311, 7314 y 7313, respectivamente. Global escucha en 7316.
+- **global, admin, inmuebles, tokenizacion y comercio** deben compartir el secreto `Global__ClaveEventos`. Los microservicios conservan una confirmación independiente para Global y Reportes por tenant.
+- **global** necesita un secreto distinto en `Global__ClaveIndicadores`. Consulta `GET /interno/global/indicadores` desde la red privada con la cabecera `X-Global-Indicadores`. La respuesta JSON incluye compras por estado, montos separados por moneda, tokens, inmuebles, tenants y el último corte de cada fuente.
+- **gateway** necesita `ReverseProxy__Clusters__global__Destinations__principal__Address` con el origen privado de **global** y barra final.
+
+Aplica primero los cambios de las fuentes y deja **global** activo mientras procesa el historial. Comprueba que `GET /api/Global/Catalogo` devuelve un listado antes de dirigir el muro al nuevo servicio. El Gateway conserva `GET /api/Ofertas/Catalogo` para sus clientes. El detalle, las imágenes, las reservas y las compras se gestionan en Comercio. Los valores de las compras corresponden al flujo de demostración.
+
+### Panel de administración global
+
+Configura el mismo secreto `Global__ClaveAccesoPanel` en **admin** y **global**. Usa un valor distinto de las otras claves internas. El navegador usa la sesión de Umbral.
+
+En **admin**, y también en **login** si usas OAuth, configura `Global__Administradores__0` con el UUID de una cuenta activa. Usa `__1`, `__2` y los demás índices para otras cuentas autorizadas. Cada cuenta necesita una asignación vigente del rol activo `SUPER_ADMIN` con alcance `GLOBAL` y una sesión validada con contraseña u OAuth. Tras volver a iniciar sesión, el panel está disponible en `/administracion/indicadores`.
+
+Si la asignación aún no existe, un operador de la base de Administración puede crearla con esta transacción. Sustituye el UUID de ejemplo por el de la cuenta activa antes de ejecutarla.
+
+```sql
+BEGIN;
+INSERT INTO admin.rol (id, codigo, nombre_visible, estado)
+VALUES (gen_random_uuid(), 'SUPER_ADMIN', 'Administrador global', 'ACTIVO')
+ON CONFLICT (codigo) DO NOTHING;
+INSERT INTO admin.usuario_rol (id, usuario_id, rol_id, alcance)
+SELECT gen_random_uuid(), u.id, r.id, 'GLOBAL'
+FROM admin.usuario u CROSS JOIN admin.rol r
+WHERE u.id = '<UUID de la cuenta>'::uuid AND u.estado = 'ACTIVO'
+  AND r.codigo = 'SUPER_ADMIN' AND r.estado = 'ACTIVO'
+ON CONFLICT DO NOTHING;
+COMMIT;
+```

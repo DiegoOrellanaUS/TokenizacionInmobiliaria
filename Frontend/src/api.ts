@@ -6,7 +6,9 @@ export interface Sesion {
   correo: string
   tenantId: string | null
   esRevisor: boolean
+  esAdminGlobal?: boolean
   token: string
+  venceEn?: string | null
 }
 
 export interface Plan {
@@ -34,18 +36,21 @@ export interface Expediente {
 
 export interface Emision {
   inmuebleId: string; activoId: string; codigo: string; unidades: number; red: string
-  estado: string; hash?: string; ledger?: number
+  estado: string; emisor?: string; hash?: string; ledger?: number
 }
 
 export interface Oferta {
   id: string; inmuebleId: string; nombre: string; ciudad: string; tipo: string
   codigo: string; unidades: number; disponibles: number; precio: number; moneda: string; publicadaEn: string
+  emisor?: string | null; red?: string | null
 }
 
 export interface Compra {
   id: string; ofertaId: string; inmueble: string; codigo: string; unidades: number
-  total: number; moneda: string; estado: 'PENDIENTE' | 'CONFIRMADA' | 'FALLIDA'
+  total: number; moneda: string; estado: 'ESPERANDO_PAGO' | 'PENDIENTE' | 'CONFIRMADA' | 'FALLIDA' | 'CANCELADA'; puedeCancelar?: boolean
   creadaEn: string; hash?: string; billetera?: string; ledger?: number
+  hashPago?: string; ledgerPago?: number; pagadorUsdc?: string; destinoUsdc?: string
+  memoPago?: string; totalUsdc?: string; pagoIniciado?: boolean
 }
 
 export class ApiError extends Error {
@@ -83,16 +88,16 @@ export function fotoDeOferta(id: string) {
   return base + '/api/Ofertas/Imagen/' + encodeURIComponent(id)
 }
 
-export async function descargar(path: string, sesion: Sesion | null) {
+export async function descargar(path: string, sesion: Sesion | null, nombre = 'respaldo') {
   const headers = new Headers()
   if (sesion) headers.set('Authorization', 'Bearer ' + sesion.token)
   if (sesion?.tenantId) headers.set('X-Tenant', sesion.tenantId)
   const response = await fetch(base + path, { headers })
-  if (!response.ok) throw new ApiError(response.status, 'No se pudo descargar el respaldo.')
+  if (!response.ok) throw new ApiError(response.status, nombre === 'respaldo' ? 'No se pudo descargar el respaldo.' : 'No se pudo descargar el informe.')
   const url = URL.createObjectURL(await response.blob())
   const enlace = document.createElement('a')
   enlace.href = url
-  enlace.download = 'respaldo'
+  enlace.download = nombre
   enlace.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

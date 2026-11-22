@@ -37,6 +37,9 @@ namespace ComercioInversion.Data.Migrations.Catalogo
                     b.Property<DateTimeOffset>("CreadaEn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DestinoUsdc")
+                        .HasColumnType("text");
+
                     b.Property<string>("Estado")
                         .IsRequired()
                         .HasColumnType("text");
@@ -44,7 +47,13 @@ namespace ComercioInversion.Data.Migrations.Catalogo
                     b.Property<string>("Hash")
                         .HasColumnType("text");
 
+                    b.Property<string>("HashPago")
+                        .HasColumnType("text");
+
                     b.Property<long?>("Ledger")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LedgerPago")
                         .HasColumnType("bigint");
 
                     b.Property<string>("Moneda")
@@ -55,6 +64,9 @@ namespace ComercioInversion.Data.Migrations.Catalogo
                     b.Property<Guid>("OfertaId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("PagadorUsdc")
+                        .HasColumnType("text");
+
                     b.Property<decimal>("PrecioUnitario")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -62,10 +74,14 @@ namespace ComercioInversion.Data.Migrations.Catalogo
                     b.Property<DateTimeOffset>("ReintentarEn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("TransferenciaIniciada")
+                        .HasColumnType("boolean");
+
                     b.Property<long>("Unidades")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+                    b.HasIndex("HashPago").IsUnique();
 
                     b.HasIndex("OfertaId");
 

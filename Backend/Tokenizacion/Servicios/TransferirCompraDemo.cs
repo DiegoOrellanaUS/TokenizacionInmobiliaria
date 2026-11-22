@@ -10,22 +10,9 @@ public sealed class TransferirCompraDemo(TokenizacionContext context, StellarCli
     private const string Confirmada = "CONFIRMADA";
     private const string Fallida = "FALLIDA";
 
-    public async Task<TransferenciaCompraDemo> Ejecutar(Guid tenantId, Guid compraId, Guid inmuebleId, Guid compradorId,
-        long unidades, CancellationToken ct)
-    {
-        await context.Database.OpenConnectionAsync(ct);
-        try
-        {
-            // Comparte el bloqueo con la emisión y protege la secuencia de la cuenta distribuidora.
-            await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_lock(67730290112711)", ct);
-            try { return await EjecutarConBloqueo(tenantId, compraId, inmuebleId, compradorId, unidades, ct); }
-            finally
-            {
-                await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock(67730290112711)", CancellationToken.None);
-            }
-        }
-        finally { await context.Database.CloseConnectionAsync(); }
-    }
+    public Task<TransferenciaCompraDemo> Ejecutar(Guid tenantId, Guid compraId, Guid inmuebleId, Guid compradorId,
+        long unidades, CancellationToken ct) =>
+        context.ConBloqueoStellarAsync(() => EjecutarConBloqueo(tenantId, compraId, inmuebleId, compradorId, unidades, ct), ct);
 
     private async Task<TransferenciaCompraDemo> EjecutarConBloqueo(Guid tenantId, Guid compraId, Guid inmuebleId,
         Guid compradorId, long unidades, CancellationToken ct)
@@ -84,16 +71,7 @@ public sealed class TransferirCompraDemo(TokenizacionContext context, StellarCli
             await context.SaveChangesAsync(ct);
         }
 
-        var hash = orden.Hash!;
-        var resultado = await red.ConsultarAsync(hash, ct);
-        if (resultado.Estado == "NOT_FOUND")
-        {
-            try { resultado = await stellar.EnviarPagoInmueble(tenantId, orden.Sobre!, hash, ct); }
-            catch (Exception ex) when (ex is StellarCliException or TimeoutException)
-            {
-                resultado = await red.ConsultarAsync(hash, ct);
-            }
-        }
+        var resultado = await red.ConfirmarOEnviarAsync(tenantId, orden.Hash!, orden.Sobre!, ct);
 
         if (resultado.Ledger is > 0 && resultado.Estado is "SUCCESS" or "FAILED")
         {

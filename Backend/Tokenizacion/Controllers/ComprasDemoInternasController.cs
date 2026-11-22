@@ -43,7 +43,9 @@ public sealed class ComprasDemoInternasController(TenantContext tenant, Preparar
         if (tenantId == Guid.Empty || compraId == Guid.Empty || compra.InmuebleId == Guid.Empty || compra.CompradorId == Guid.Empty)
             return BadRequest("La solicitud contiene un identificador inválido.");
 
-        if (compra.InmuebleId == VerificarPagoPollar.InmuebleCasaPrado && compra.Pago is null)
+        if (compra.SinPago && compra.Pago is not null)
+            return BadRequest("Una compra demo sin cobro no puede incluir un pago.");
+        if (compra.InmuebleId == VerificarPagoPollar.InmuebleCasaPrado && !compra.SinPago && compra.Pago is null)
             return Conflict("Casa Prado requiere un pago USDC confirmado.");
 
         tenant.TenantId = tenantId;
@@ -78,5 +80,5 @@ public sealed class ComprasDemoInternasController(TenantContext tenant, Preparar
 
     public sealed record Solicitud(Guid InmuebleId, Guid CompradorId,
         [Range(typeof(long), "1", "922337203685", ParseLimitsInInvariantCulture = true)] long Unidades,
-        VerificarPagoPollar.Evidencia? Pago);
+        VerificarPagoPollar.Evidencia? Pago, bool SinPago = false);
 }

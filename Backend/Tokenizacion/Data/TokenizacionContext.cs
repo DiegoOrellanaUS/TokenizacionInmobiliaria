@@ -18,6 +18,22 @@ namespace Tokenizacion.Data
         public DbSet<InstantaneaSaldo> InstantaneaSaldo { get; set; } = default!;
         public DbSet<InstantaneaSaldoLinea> InstantaneaSaldoLinea { get; set; } = default!;
 
+        internal async Task<T> ConBloqueoStellarAsync<T>(Func<Task<T>> operacion, CancellationToken ct)
+        {
+            await Database.OpenConnectionAsync(ct);
+            try
+            {
+                // Serializa la emisión y la entrega dentro de la base de cada tenant.
+                await Database.ExecuteSqlRawAsync("SELECT pg_advisory_lock(67730290112711)", ct);
+                try { return await operacion(); }
+                finally
+                {
+                    await Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock(67730290112711)", CancellationToken.None);
+                }
+            }
+            finally { await Database.CloseConnectionAsync(); }
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<TransferenciaCompraDemo>().HasIndex(t => new { t.InmuebleId, t.Estado });

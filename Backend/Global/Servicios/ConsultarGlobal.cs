@@ -18,7 +18,7 @@ public sealed class ConsultarGlobal(AlmacenGlobal almacen)
         var ofertas = new List<OfertaGlobal>();
         await using (var cmd = Comando(db, tx, """
             SELECT o.id,o.inmueble_id,o.nombre,o.ciudad,o.tipo,o.codigo,o.unidades,o.disponibles,o.precio,o.moneda,o.publicada_en,
-                   e.datos->>'emisor', e.datos->>'red'
+                   e.datos->>'emisor', e.datos->>'red', (e.datos->>'unidades')::bigint
             FROM global.oferta_publica o JOIN global.tenant_publicacion t ON t.tenant_id=o.tenant_id
             LEFT JOIN global.kpi_entidad e ON e.tenant_id=o.tenant_id AND e.tipo='emision' AND e.referencia=o.inmueble_id
                 AND e.datos->>'estado'='CONFIRMADA' AND e.datos->>'codigo'=o.codigo
@@ -30,7 +30,8 @@ public sealed class ConsultarGlobal(AlmacenGlobal almacen)
                 ofertas.Add(new(lector.GetGuid(0), lector.GetGuid(1), lector.GetString(2), lector.GetString(3),
                     lector.GetString(4), lector.GetString(5), lector.GetInt64(6), lector.GetInt64(7),
                     lector.GetDecimal(8), lector.GetString(9), lector.GetFieldValue<DateTimeOffset>(10),
-                    lector.IsDBNull(11) ? null : lector.GetString(11), lector.IsDBNull(12) ? null : lector.GetString(12)));
+                    lector.IsDBNull(11) ? null : lector.GetString(11), lector.IsDBNull(12) ? null : lector.GetString(12),
+                    lector.IsDBNull(13) ? null : lector.GetInt64(13)));
 
         await tx.CommitAsync(ct);
         return ofertas;
@@ -80,7 +81,8 @@ public sealed class ConsultarGlobal(AlmacenGlobal almacen)
     }
 
     public sealed record OfertaGlobal(Guid Id, Guid InmuebleId, string Nombre, string Ciudad, string Tipo, string Codigo,
-        long Unidades, long Disponibles, decimal Precio, string Moneda, DateTimeOffset PublicadaEn, string? Emisor, string? Red);
+        long Unidades, long Disponibles, decimal Precio, string Moneda, DateTimeOffset PublicadaEn,
+        string? Emisor, string? Red, long? UnidadesEmitidas);
 
     public sealed record FuenteGlobal(string Fuente, DateTimeOffset? ActualizadoEn);
     public sealed record ImporteGlobal(string Moneda, decimal Importe);

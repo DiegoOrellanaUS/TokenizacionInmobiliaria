@@ -84,7 +84,7 @@ export function RevisionTransacciones() {
         <tbody>{data.compras.map(compra => <tr key={compra.id}>
           <th scope="row">{compra.inmueble}<small>{compra.codigo}</small></th>
           <td><time dateTime={compra.creadaEn}>{fechaSolicitud.format(Date.parse(compra.creadaEn))}</time></td>
-          <td>{compra.unidades}</td><td>{moneda(compra.total, compra.moneda)}</td>
+          <td>{compra.unidades}</td><td>{compra.sinPago ? 'Demo sin cobro' : moneda(compra.total, compra.moneda)}</td>
           <td><Estado value={compra.estado}/></td>
           <td>{compra.hashPago || (compra.estado === 'CONFIRMADA' && compra.hash)
             ? <ComprobantesCompra compra={compra}/> : 'Sin comprobantes'}</td>

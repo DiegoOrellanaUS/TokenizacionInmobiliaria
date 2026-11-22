@@ -1,4 +1,21 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function entrar(page: Page, correo: string, contrasenia?: string) {
+  await page.goto('/acceso')
+  await page.getByLabel('Correo electrónico').fill(correo)
+  if (contrasenia) await page.getByLabel('Contraseña').fill(contrasenia)
+  const respuesta = page.waitForResponse(r => r.url().endsWith('/api/SesionDemo/Iniciar') && r.ok())
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  return (await respuesta).json()
+}
+
+async function comprobarDescarga(page: Page, nombre: string, extension: string) {
+  const descarga = page.waitForEvent('download')
+  await page.getByRole('button', { name: nombre, exact: true }).click()
+  const archivo = await descarga
+  expect(archivo.suggestedFilename().endsWith('.' + extension)).toBe(true)
+  expect(await archivo.failure()).toBeNull()
+}
 
 test('móvil: el catálogo abre y no desborda horizontalmente', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -10,7 +27,7 @@ test('móvil: el catálogo abre y no desborda horizontalmente', async ({ page })
 })
 
 test('MVP: registro, revisión, emisión, publicación y compra en Testnet', async ({ page, browser, baseURL }) => {
-  test.setTimeout(300_000)
+  test.setTimeout(360_000)
   const correoRevisor = process.env.E2E_REVIEWER_EMAIL
   if (!correoRevisor) throw new Error('Configura E2E_REVIEWER_EMAIL con un revisor local habilitado.')
   const gateway = process.env.E2E_API_URL || 'https://localhost:7339'
@@ -40,10 +57,10 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   await page.getByRole('button', { name: 'Confirmar pago de prueba' }).click()
   const pago = await (await suscripcion).json()
   expect(pago.estado).toBe('ACTIVA')
-  expect(pago.servicios).toEqual([
+  expect([...pago.servicios].sort((a, b) => a.servicio.localeCompare(b.servicio))).toEqual([
     { servicio: 'inmuebles', estado: 'LISTO' },
-    { servicio: 'tokenizacion', estado: 'LISTO' },
     { servicio: 'reportes', estado: 'LISTO' },
+    { servicio: 'tokenizacion', estado: 'LISTO' },
   ])
   await page.getByRole('button', { name: 'Ir a mis inmuebles' }).click()
   await expect(page.getByText(pago.tenantId, { exact: true })).toBeVisible()
@@ -68,12 +85,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   const otro = await browser.newContext({ baseURL })
   try {
     const revisar = await otro.newPage()
-    await revisar.goto('/acceso')
-    await revisar.getByLabel('Correo electrónico').fill(correoRevisor)
-    if (contraseniaRevisor) await revisar.getByLabel('Contraseña').fill(contraseniaRevisor)
-    const sesionRevisor = revisar.waitForResponse(r => r.url().endsWith('/api/SesionDemo/Iniciar') && r.ok())
-    await revisar.getByRole('button', { name: 'Continuar' }).click()
-    const perfil = await (await sesionRevisor).json()
+    const perfil = await entrar(revisar, correoRevisor, contraseniaRevisor)
     expect(perfil).toMatchObject({ esRevisor: true, tenantId: null })
     const headers = { Authorization: 'Bearer ' + perfil.token }
     const [contratar, comprar, publicar] = await Promise.all([
@@ -123,7 +135,10 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   await page.bringToFront()
   await expect(page.getByRole('heading', { name: 'Tokenización' })).toBeVisible({ timeout: 15000 })
   await page.getByRole('button', { name: 'Preparar emisión' }).click()
+  const emisionRegistrada = page.waitForResponse(r => r.url().endsWith('/' + id + '/Emitir') && r.request().method() === 'POST')
   await page.getByRole('button', { name: 'Confirmar emisión en Testnet' }).click()
+  const emision = await (await emisionRegistrada).json()
+  expect(emision.codigo).toMatch(/^I[A-Z0-9]{11}$/)
   await expect(page.getByRole('link', { name: 'Ver transacción' })).toBeVisible({ timeout: 95_000 })
   await expect(page.getByRole('heading', { name: 'Publicar oferta' })).toBeVisible({ timeout: 15_000 })
   await page.getByLabel('Precio por unidad').fill('60.50')
@@ -131,6 +146,8 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
   await page.getByRole('button', { name: 'Publicar en el catálogo' }).click()
   await page.getByRole('link', { name: 'Ver oferta pública' }).click()
   await expect(page.getByRole('heading', { name: nombre })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Ver token en Stellar' })).toHaveAttribute('href',
+    new RegExp('/asset/' + emision.codigo + '-'), { timeout: 30_000 })
   const oferta = new URL(page.url()).pathname.split('/').at(-1)
   await expect(page.getByRole('status', { name: 'Unidades disponibles' })).toHaveText('125')
   await page.getByRole('button', { name: 'Cerrar sesión' }).click()
@@ -164,27 +181,29 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
     const comprador = await compradores.newPage()
     const correoComprador = 'comprador.' + serie + '@example.test'
     await comprador.goto('/ofertas/' + oferta)
-    await comprador.getByRole('link', { name: 'Acceder para comprar' }).click()
+    await comprador.getByRole('link', { name: 'Compra demo', exact: true }).click()
     await comprador.getByRole('button', { name: 'Crear cuenta', exact: true }).click()
     await comprador.getByLabel('Nombre', { exact: true }).fill('Cris')
     await comprador.getByLabel('Documento de identidad').fill('C' + serie)
     await comprador.getByLabel('Correo electrónico').fill(correoComprador)
     if (contrasenia) await comprador.getByLabel('Contraseña').fill(contrasenia)
     await comprador.getByRole('button', { name: 'Crear perfil' }).click()
-    await comprador.getByLabel('Unidades a comprar').fill('2')
+    await comprador.getByLabel('Unidades para la compra demo').fill('2')
     const ordenCreada = comprador.waitForResponse(r => r.url().includes('/api/Compras/Ofertas/') && r.request().method() === 'POST')
-    await comprador.getByRole('button', { name: 'Confirmar compra de prueba' }).click()
+    await comprador.getByRole('button', { name: 'Compra demo', exact: true }).click()
     const respuesta = await ordenCreada
     expect(respuesta.status()).toBe(202)
     const orden = await respuesta.json()
-    expect(orden).toMatchObject({ estado: 'PENDIENTE', unidades: 2, total: 121 })
-    await expect(comprador.getByText('Pago simulado registrado.', { exact: false })).toBeVisible()
+    expect(orden).toMatchObject({ estado: 'PENDIENTE', unidades: 2, total: 0, sinPago: true })
+    await expect(comprador.getByText('Compra demo registrada.', { exact: false })).toBeVisible()
     await expect(comprador.getByRole('status', { name: 'Unidades disponibles' })).toHaveText('123')
     await comprador.getByRole('link', { name: 'Ver mi portafolio' }).click()
     await expect(comprador.getByRole('heading', { name: 'Mi portafolio' })).toBeVisible()
     await expect(comprador.getByText('Pendiente', { exact: true })).toBeVisible()
-    await expect(comprador.getByText('2 unidades confirmadas', { exact: true })).toBeVisible({ timeout: 120_000 })
-    await expect(comprador.getByRole('link', { name: 'Ver transferencia' })).toHaveAttribute('href', /\/testnet\/tx\/[a-f0-9]{64}$/)
+    await expect(comprador.getByText('2 de 500 unidades emitidas', { exact: true })).toBeVisible({ timeout: 120_000 })
+    await expect(comprador.getByText(orden.id, { exact: true })).toBeVisible()
+    await expect(comprador.getByRole('link', { name: 'Ver entrega de ' + emision.codigo + ' en Stellar' }))
+      .toHaveAttribute('href', /\/testnet\/tx\/[a-f0-9]{64}$/)
 
     const verificacion = await comprador.evaluate(async ({ correoComprador, correo, oferta, orden, gateway, contrasenia }) => {
       async function iniciar(correo: string) {
@@ -202,7 +221,7 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
       const sinToken = await fetch(path)
       const ajeno = await fetch(path, { headers: cabeceraVendedor })
       const revisor = await fetch(gateway + '/api/SesionDemo/MuroRevision', { headers })
-      const rutaCompra = gateway + '/api/Compras/Ofertas/' + oferta
+      const rutaCompra = gateway + '/api/Compras/Ofertas/' + oferta + '/Demo'
       const reintento = await fetch(rutaCompra, {
         method: 'POST', headers, body: JSON.stringify({ referencia: orden.id, unidades: 2 }),
       })
@@ -225,6 +244,83 @@ test('MVP: registro, revisión, emisión, publicación y compra en Testnet', asy
     expect(verificacion.compra.ledger).toBeGreaterThan(0)
     await vendedor.bringToFront()
     await expect(vendedor.getByRole('status', { name: 'Unidades disponibles' })).toHaveText('123')
+
+    if (process.env.E2E_RENTAS === 'true') await test.step('Descargas y cierre de alquiler en Stellar', async () => {
+      const titular = await entrar(vendedor, correo, contrasenia)
+      const navegacion = vendedor.getByRole('navigation', { name: 'Navegación principal' })
+      await navegacion.getByRole('link', { name: 'Mis reportes', exact: true }).click()
+      await expect(vendedor.locator('.kpi-graficas figure')).toHaveCount(3)
+      await comprobarDescarga(vendedor, 'Excel de mi espacio', 'xlsx')
+      await comprobarDescarga(vendedor, 'PDF de mi espacio', 'pdf')
+      await navegacion.getByRole('link', { name: 'Cierres de alquiler', exact: true }).click()
+
+      const mes = new Date(Date.now() - 4 * 60 * 60 * 1000)
+      mes.setUTCDate(1)
+      mes.setUTCMonth(mes.getUTCMonth() - 1)
+      const periodo = mes.toISOString().slice(0, 7)
+      await vendedor.locator('select[name="oferta"]').selectOption(oferta)
+      await vendedor.getByLabel('Mes cerrado').fill(periodo)
+      const campos = {
+        'Alquiler cobrado': '2000', 'Base facturada para IVA': '2000', 'Crédito fiscal IVA admisible': '30',
+        'Base imponible del IT': '2000', 'IUE pagado aplicado como crédito al IT': '10',
+        'Utilidad fiscal estimada para provisionar IUE': '400', 'Impuesto municipal anual de referencia': '1200',
+        'Reserva del mes': '120', 'Concepto del gasto 1': 'Mantenimiento E2E', 'Importe en Bs del gasto 1': '200',
+        'Comprobante del gasto 1': 'FACTURA-E2E', 'Importe en Bs del pago 1': '230',
+        'Fecha del pago 1': periodo + '-15', 'Referencia de la boleta 1': 'BOLETA-E2E',
+      }
+      for (const [label, valor] of Object.entries(campos)) await vendedor.getByLabel(label, { exact: true }).fill(valor)
+      const respuestaCierre = vendedor.waitForResponse(r => r.url().endsWith('/Rentas/Ofertas/' + oferta) && r.request().method() === 'POST', { timeout: 20000 })
+      await vendedor.getByRole('button', { name: 'Enviar cierre al revisor' }).click()
+      const respuesta = await respuestaCierre
+      expect(respuesta.ok(), await respuesta.text()).toBe(true)
+      const cierre = await respuesta.json()
+      expect(cierre).toMatchObject({ asignado: 4.8, aprobadoEn: null, contabilidad: { distribuible: 1200 } })
+      const rutaCierre = gateway + '/api/Compras/Rentas/' + cierre.id
+      const sinPermiso = await vendedor.request.post(rutaCierre + '/Aprobar', {
+        headers: { Authorization: 'Bearer ' + titular.token },
+      })
+      expect(sinPermiso.status()).toBe(403)
+
+      const revisar = await browser.newPage({ baseURL })
+      try {
+        const revisor = await entrar(revisar, correoRevisor, contraseniaRevisor)
+        await revisar.getByRole('link', { name: 'Reportes globales', exact: true }).click()
+        await expect(revisar.locator('.kpi-graficas figure')).toHaveCount(4)
+        await comprobarDescarga(revisar, 'Excel', 'xlsx')
+        await comprobarDescarga(revisar, 'PDF', 'pdf')
+        await revisar.getByRole('link', { name: 'Repartos de alquiler', exact: true }).click()
+        const detalle = revisar.getByRole('region', { name: 'Cierre de ' + nombre, exact: true })
+        await expect(detalle.getByText('FACTURA-E2E')).toBeVisible()
+        await expect(detalle.getByText('BOLETA-E2E')).toBeVisible()
+        const headers = { Authorization: 'Bearer ' + revisor.token }
+        expect((await revisar.request.post(rutaCierre + '/Pagar', { headers })).status()).toBe(409)
+        const acciones = detalle.locator('..')
+        await acciones.getByRole('button', { name: 'Aprobar reparto', exact: true }).click()
+        await acciones.getByRole('button', { name: 'Enviar pagos Testnet', exact: true }).click()
+        await expect(detalle.getByText('1 pago confirmado', { exact: false })).toBeVisible({ timeout: 90_000 })
+        expect((await (await revisar.request.post(rutaCierre + '/Pagar', { headers })).json()).restantes).toBe(0)
+      } finally { await revisar.close() }
+
+      await comprador.bringToFront()
+      const rentas = comprador.getByRole('region', { name: 'Mis rentas', exact: true })
+      await expect(rentas.getByText('4,80', { exact: false })).toBeVisible({ timeout: 15000 })
+      const enlace = rentas.getByRole('link', { name: 'Ver pago de renta en Stellar' })
+      await expect(enlace).toHaveCount(1, { timeout: 15000 })
+      const hashRenta = (await enlace.getAttribute('href'))!.split('/').at(-1)
+      expect(hashRenta).toMatch(/^[a-f0-9]{64}$/)
+      const horizonte = 'https://horizon-testnet.stellar.org/transactions/'
+      await expect(async () => {
+        const consulta = await comprador.request.get(horizonte + hashRenta + '/operations')
+        expect(consulta.ok()).toBe(true)
+        const { _embedded } = await consulta.json()
+        expect(_embedded.records).toContainEqual(expect.objectContaining({
+          type: 'payment', transaction_successful: true, asset_type: 'native',
+          amount: '0.0480000', to: verificacion.compra.billetera,
+        }))
+      }).toPass({ timeout: 25000 })
+      console.log(JSON.stringify({ hashRenta }))
+    })
+
     console.log(JSON.stringify({ tenant: pago.tenantId, suscripcion: pago.subscripcionId, inmueble: id, oferta,
       compra: verificacion.compra }))
   } finally { await compradores.close() }

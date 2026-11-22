@@ -27,7 +27,7 @@ public sealed class GlobalController(AlmacenGlobal almacen, ConsultarGlobal cons
         if (filas is null) return StatusCode(503, "El catálogo se está sincronizando.");
         var oferta = filas.SingleOrDefault();
         return oferta is { Emisor: not null, Red: not null }
-            ? Ok(new { oferta.Codigo, oferta.Emisor, oferta.Red }) : NotFound();
+            ? Ok(new { oferta.Codigo, oferta.Emisor, oferta.Red, oferta.UnidadesEmitidas }) : NotFound();
     }, ct);
 
     [ApiExplorerSettings(IgnoreApi = true)]

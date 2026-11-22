@@ -57,6 +57,14 @@ public sealed partial class StellarCli
         return (firmado.Hash, firmado.Sobre, comprador);
     }
 
+    public async Task<(string Hash, string Sobre)> FirmarRentaDemo(Guid tenantId, Guid cierreId,
+        string destino, long stroops, CancellationToken ct)
+    {
+        var alias = $"renta-{cierreId:N}";
+        await PrepararCuentaAsync(tenantId, alias, ct);
+        return await FirmarPagoAsync(tenantId, alias, "native", destino, stroops.ToString(CultureInfo.InvariantCulture), ct);
+    }
+
     private async Task<(string Hash, string Sobre)> FirmarPagoAsync(
         Guid tenantId, string firmante, string activo, string distribuidora, string cantidadCli, CancellationToken ct)
     {

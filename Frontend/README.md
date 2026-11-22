@@ -20,5 +20,6 @@ El flujo de la interfaz es registro con correo, plan piloto, nuevo inmueble, tit
 - `npm run build` compila TypeScript y Vite.
 - Con la aplicación en marcha, configura `E2E_REVIEWER_EMAIL` con el correo de un revisor local habilitado y, opcionalmente, `E2E_PLAN` con el nombre del plan que quieres probar. Ejecuta `npm test`. Las pruebas crean un usuario, un inmueble y una oferta ficticios en la base que usa el backend local.
 - La suite usa Microsoft Edge por defecto. `E2E_BROWSER` permite seleccionar otro canal de Playwright instalado.
+- Para incluir las descargas de reportes y el reparto de alquiler, ejecuta la suite con `E2E_RENTAS=true` contra datos aislados y con ComercioInversion y Tokenización en `Development`. El reparto envía XLM de Stellar Testnet.
 
 La fotografía de referencia se obtuvo de [Unsplash](https://images.unsplash.com/photo-1600607687939-ce8a6c25118c). En el catálogo aparece como ilustración de referencia.

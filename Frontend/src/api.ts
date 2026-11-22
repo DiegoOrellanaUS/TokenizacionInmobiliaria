@@ -48,6 +48,7 @@ export interface Oferta {
 export interface Compra {
   id: string; ofertaId: string; inmueble: string; codigo: string; unidades: number
   total: number; moneda: string; estado: 'ESPERANDO_PAGO' | 'PENDIENTE' | 'CONFIRMADA' | 'FALLIDA' | 'CANCELADA'; puedeCancelar?: boolean
+  sinPago?: boolean
   creadaEn: string; hash?: string; billetera?: string; ledger?: number
   hashPago?: string; ledgerPago?: number; pagadorUsdc?: string; destinoUsdc?: string
   memoPago?: string; totalUsdc?: string; pagoIniciado?: boolean

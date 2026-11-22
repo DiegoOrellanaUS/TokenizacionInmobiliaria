@@ -10,6 +10,14 @@ Casa Prado usa Pollar para firmar un pago de USDC de prueba. Tokenización verif
 
 El checkout está habilitado para la oferta identificada por `32d2ac6f-f288-4dc9-b226-66a2379a518f`, en los entornos Development y Piloto. El inmueble requiere una emisión confirmada y saldo en su distribuidora. La clave que usa el frontend es publicable. El SDK no requiere compartir claves privadas de las billeteras con Umbral.
 
+## Inicio de sesión con Google
+
+El SDK envía el origen del navegador como `redirect_uri`. Registra `http://localhost:5173` para el desarrollo local en la lista de **Redirect URIs** de la aplicación Testnet vinculada a `Pollar__ClavePublica`. Cuando se publique el checkout, registra también `https://tokenizacion-inmobiliaria.vercel.app`. Usa el origen exacto, sin agregar una ruta de callback.
+
+Pollar valida por separado los dominios permitidos en **Build → Domains** y las URLs de retorno de OAuth. Si la ventana de Google muestra `APPLICATION_HAS_NO_REDIRECT_URIS`, la app de Pollar todavía no tiene URLs de retorno registradas. El checkout puede crear una sesión y mostrar ese error antes de que se abra Google. [Dashboard de Pollar](https://dashboard.pollar.xyz/)
+
+Para probar el pago sin usar el inicio de sesión con Google, selecciona **Conectar Freighter** con la extensión en Stellar Testnet. Usa una cuenta distinta de la receptora y con saldo de USDC de prueba. **Compra demo** sigue disponible como flujo separado sin cobro.
+
 ## Verificación del recorrido
 
 1. Abre Casa Prado con una cuenta compradora y conecta Pollar. Habilita USDC y fondea la billetera con el faucet de Circle si hace falta. [Oferta de Casa Prado](https://tokenizacion-inmobiliaria.vercel.app/ofertas/32d2ac6f-f288-4dc9-b226-66a2379a518f) · [Faucet de Circle](https://faucet.circle.com/)

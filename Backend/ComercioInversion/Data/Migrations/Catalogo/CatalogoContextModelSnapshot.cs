@@ -167,6 +167,47 @@ namespace ComercioInversion.Data.Migrations.Catalogo
 
                     b.Navigation("Oferta");
                 });
+            modelBuilder.Entity("ComercioInversion.Data.CierreRenta", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<Guid>("OfertaId").HasColumnType("uuid");
+                    b.Property<Guid>("TenantId").HasColumnType("uuid");
+                    b.Property<Guid>("AutorId").HasColumnType("uuid");
+                    b.Property<Guid?>("RevisorId").HasColumnType("uuid");
+                    b.Property<DateTimeOffset>("Corte").HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset?>("AprobadoEn").HasColumnType("timestamp with time zone");
+                    b.Property<string>("Periodo").IsRequired().HasColumnType("text");
+                    b.Property<string>("Datos").IsRequired().HasColumnType("jsonb");
+                    b.HasKey("Id");
+                    b.HasIndex("OfertaId", "Periodo").IsUnique();
+                    b.ToTable("cierre_renta", "catalogo");
+                    b.HasOne("ComercioInversion.Data.OfertaPublicada", "Oferta").WithMany()
+                        .HasForeignKey("OfertaId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.Navigation("Oferta");
+                });
+
+            modelBuilder.Entity("ComercioInversion.Data.PagoRenta", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<Guid>("CierreId").HasColumnType("uuid");
+                    b.Property<Guid>("CompradorId").HasColumnType("uuid");
+                    b.Property<long>("Unidades").HasColumnType("bigint");
+                    b.Property<long>("Centavos").HasColumnType("bigint");
+                    b.Property<long>("Stroops").HasColumnType("bigint");
+                    b.Property<string>("Billetera").IsRequired().HasColumnType("text");
+                    b.Property<string>("Sobre").HasColumnType("text");
+                    b.Property<string>("Hash").HasColumnType("text");
+                    b.Property<long?>("Ledger").HasColumnType("bigint");
+                    b.Property<bool>("Fallido").HasColumnType("boolean");
+                    b.HasKey("Id");
+                    b.HasIndex("CompradorId");
+                    b.HasIndex("CierreId", "CompradorId").IsUnique();
+                    b.ToTable("pago_renta", "catalogo");
+                    b.HasOne("ComercioInversion.Data.CierreRenta", "Cierre").WithMany("Pagos")
+                        .HasForeignKey("CierreId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.Navigation("Cierre");
+                });
+            modelBuilder.Entity("ComercioInversion.Data.CierreRenta", b => b.Navigation("Pagos"));
 #pragma warning restore 612, 618
         }
     }

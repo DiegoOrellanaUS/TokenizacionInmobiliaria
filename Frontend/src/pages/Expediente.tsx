@@ -6,7 +6,7 @@ import { useAccion, useDatos } from '../hooks'
 import { useSesion } from '../session'
 import { Button, Campo, ErrorBox, Estado } from '../ui/atoms'
 import { PageTitle, Progreso } from '../ui/molecules'
-import { enlaceActivo } from '../ui/Stellar'
+import { enlaceActivo, enlaceTransaccionTestnet } from '../ui/Stellar'
 
 export function Expediente() {
   const { id } = useParams()
@@ -208,14 +208,14 @@ export function Expediente() {
           {!token.data && token.status !== 404 && <ErrorBox text={token.error}/>}
           {token.data && <><span role="status"><Estado value={token.data.estado}/></span><p>{token.data.unidades} {token.data.codigo} · Stellar Testnet</p>
             {urlActivo && <a className="text-button" target="_blank" rel="noreferrer" href={urlActivo}>Ver activo en Stellar <ArrowUpRight size={16}/></a>}
-            {token.data.hash && <a className="text-button" target="_blank" rel="noreferrer" href={'https://stellar.expert/explorer/testnet/tx/' + token.data.hash}>Ver transacción <ArrowUpRight size={16}/></a>}</>}
+            {token.data.hash && <a className="text-button" target="_blank" rel="noreferrer" href={enlaceTransaccionTestnet(token.data.hash)}>Ver transacción <ArrowUpRight size={16}/></a>}</>}
           {!token.data && token.status === 404 && <form className="form-stack" onSubmit={e => {
             e.preventDefault()
             const f = new FormData(e.currentTarget)
             if (!confirmar) { setConfirmar(true); return }
-            guardar(rutaToken + '/Emitir', 'POST', { codigo: f.get('codigo'), unidades: Number(f.get('unidades')) })
+            guardar(rutaToken + '/Emitir', 'POST', { unidades: Number(f.get('unidades')) })
           }}>
-            <Campo label="Código del token"><input name="codigo" pattern="[A-Z0-9]{1,12}" defaultValue="INM001" required/></Campo>
+            <p>El código del token se asigna automáticamente al emitirlo.</p>
             <Campo label="Unidades"><input name="unidades" type="number" defaultValue={500} step="1" min="1" required/></Campo>
             <Button disabled={action.busy}>{action.busy ? 'Enviando a Stellar…' : confirmar ? 'Confirmar emisión en Testnet' : 'Preparar emisión'}</Button>
           </form>}

@@ -4,8 +4,9 @@ Para iniciar el flujo, el propietario debe tener un tenant activo, el rol `TITUL
 
 ## Configuración local
 
-- Inicia Admin, Inmuebles, Tokenización, Comercio y Gateway para hacer el flujo completo.
-- Configura el mismo valor privado de `Aprovisionamiento__ClaveInterna` en Admin, Inmuebles y Tokenización. Úsalo solo para la comunicación interna. Admin llama directamente a los servicios. Si cambias los puertos, ajusta `Aprovisionamiento__InmueblesOperacion` y `Aprovisionamiento__Tokenizacion` en Admin.
+- Inicia Admin, Inmuebles, Tokenización, Comercio, Reportes y Gateway para hacer el flujo completo.
+- Configura el mismo valor privado de `Aprovisionamiento__ClaveInterna` en Admin, Inmuebles, Tokenización y Reportes. Úsalo solo para la comunicación interna. Admin llama directamente a los servicios. Si cambias los puertos, ajusta `Aprovisionamiento__InmueblesOperacion`, `Aprovisionamiento__Tokenizacion` y `Aprovisionamiento__Reportes` en Admin.
+- Inicia Reportes en `https://localhost:7315` y configura `ConnectionStrings__ReportesContext` con una cuenta de PostgreSQL que pueda crear bases de datos. El servicio crea una base `reportes_{tenantId}` para cada tenant.
 - Configura la misma variable `Inmuebles__ClaveInterna` en Admin e Inmuebles con un valor privado. `Inmuebles__AdminUrl` en Inmuebles apunta a Admin. Su valor local predeterminado es `https://localhost:7266/`.
 - Para habilitar un revisor, asigna a su usuario un rol global vigente `REVISOR_INMUEBLE` o `SUPER_ADMIN` en Admin y agrega su UUID a la configuración de Admin, por ejemplo con `Inmuebles__Revisores__0`.
 - Usa HTTPS con los encabezados `X-Tenant` y `Authorization: Basic <base64(usuarioId:contraseña)>`. El UUID es el del usuario de Admin. Para probar desde [Scalar de Gateway](https://localhost:7339/scalar), selecciona **Inmuebles y Operación**.
@@ -48,14 +49,14 @@ Tokenización usa Stellar CLI y conserva las emisiones en la base privada que se
 
 Con el inmueble aprobado, usa el documento **Tokenizacion** del [Scalar de Gateway](https://localhost:7339/scalar), conserva el `X-Tenant` del titular y usa sus credenciales Basic.
 
-1. Llama a `POST /api/Tokenizacion/Inmuebles/{inmuebleId}/Emitir` con el código del activo y las unidades enteras.
+1. Llama a `POST /api/Tokenizacion/Inmuebles/{inmuebleId}/Emitir` con las unidades enteras. Tokenización asigna automáticamente el código de la nueva emisión.
    
    ```json
-   { "codigo": "INM001", "unidades": 500 }
+   { "unidades": 500 }
    ```
 
 2. Si el resultado es `PENDIENTE`, consulta `GET /api/Tokenizacion/Inmuebles/{inmuebleId}/Buscar` y repite el mismo POST para reconciliarlo. El servicio usa el hash y el sobre firmado que ya guardó y devuelve el resultado existente cuando se confirmó.
-3. Cuando el resultado es `CONFIRMADA`, guarda el hash y el ledger. La cuenta distribuidora recibe las unidades del activo. Stellar identifica el activo por código y dirección emisora.
+3. Cuando el resultado es `CONFIRMADA`, guarda el hash y el ledger. La cuenta distribuidora recibe las unidades del activo. Stellar identifica el activo por código y dirección emisora. Las emisiones previas conservan su código, incluido el `INM001` de Casa Prado.
 
 El contrato de emisión usa el cupo del plan en el momento de contratar. Cada inmueble tiene sus propias cuentas de emisión y distribución en Testnet. Comprar un plan en el entorno piloto y aprobar un inmueble son los pasos previos a la emisión. La oferta comercial y la venta de unidades tienen sus propios flujos.
 

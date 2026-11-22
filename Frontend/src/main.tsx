@@ -11,10 +11,13 @@ import { DetalleOferta, Mercado } from './pages/Mercado'
 import { Portafolio } from './pages/Portafolio'
 import { Reportes } from './pages/Reportes'
 import { PanelGlobal } from './pages/PanelGlobal'
+import { RentasPropias, RentasRevision } from './pages/Rentas'
+import { useDatos } from './hooks'
 import './style.css'
 
 function Shell() {
   const { sesion, modo, salir } = useSesion()
+  const rentas = useDatos<{ habilitadas: boolean }>(sesion ? '/api/Compras/Rentas/Disponible' : null)
   const [errorSalida, setErrorSalida] = useState('')
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -72,6 +75,7 @@ function Shell() {
           <NavLink to="/revision" end><FolderSearch size={18} aria-hidden="true"/> Muro de solicitudes</NavLink>
           <NavLink to="/revision/transacciones"><ClipboardList size={18} aria-hidden="true"/> Transacciones</NavLink>
           <NavLink to="/revision/reportes"><ChartNoAxesCombined size={18} aria-hidden="true"/> Reportes globales</NavLink>
+          {rentas.data?.habilitadas && <NavLink to="/revision/rentas">Repartos de alquiler</NavLink>}
         </nav>
         <main id="contenido">
           {errorSalida && <p className="alert" role="alert">{errorSalida}</p>}
@@ -88,7 +92,8 @@ function Shell() {
       <nav aria-label="Navegación principal">
         <NavLink to="/" end>Mercado</NavLink><NavLink to="/planes">Planes</NavLink>
         {sesion && <><NavLink to="/espacio">Mi espacio</NavLink><NavLink to="/portafolio">Portafolio</NavLink>
-          <NavLink to="/espacio/reportes">Mis reportes</NavLink></>}
+          <NavLink to="/espacio/reportes">Mis reportes</NavLink>
+          {sesion.tenantId && rentas.data?.habilitadas && <NavLink to="/espacio/rentas">Cierres de alquiler</NavLink>}</>}
         {sesion?.esAdminGlobal && <NavLink to="/administracion/indicadores">Indicadores globales</NavLink>}
       </nav>
       {sesion ? <button className="account" type="button" aria-label="Cerrar sesión" onClick={cerrar}>
@@ -130,6 +135,7 @@ createRoot(document.getElementById('root')!).render(
       <Route element={<Privado requiereTenant/>}>
         <Route path="espacio/nuevo" element={<NuevoInmueble/>}/>
         <Route path="espacio/inmuebles/:id" element={<Expediente/>}/>
+        <Route path="espacio/rentas" element={<RentasPropias/>}/>
       </Route>
       <Route element={<Privado admin/>}><Route path="administracion/indicadores" element={<PanelGlobal/>}/></Route>
       <Route element={<Privado revisor/>}>
@@ -137,6 +143,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="revision/expedientes/:tenantId/:id" element={<RevisionDetalle/>}/>
         <Route path="revision/transacciones" element={<RevisionTransacciones/>}/>
         <Route path="revision/reportes" element={<PanelGlobal/>}/>
+        <Route path="revision/rentas" element={<RentasRevision/>}/>
       </Route>
       <Route path="*" element={<Navigate to="/" replace/>}/>
     </Route>

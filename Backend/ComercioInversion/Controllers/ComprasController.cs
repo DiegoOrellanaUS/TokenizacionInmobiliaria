@@ -10,11 +10,26 @@ namespace ComercioInversion.Controllers;
 
 [ApiController]
 [Route("api/Compras")]
-public sealed class ComprasController(CatalogoContext context, PrepararCatalogo preparar, IHttpClientFactory clientes,
+public sealed partial class ComprasController(CatalogoContext context, PrepararCatalogo preparar, IHttpClientFactory clientes,
     IWebHostEnvironment environment, IConfiguration configuration) : ControllerBase
 {
     [HttpPost("Ofertas/{ofertaId:guid}", Name = "ComprarUnidadesDemo")]
     public Task<IActionResult> Comprar(Guid ofertaId, SolicitudCompra solicitud, CancellationToken ct) =>
+        CrearOrden(ofertaId, solicitud, sinPago: false, ct);
+
+    [HttpGet("Demo")]
+    public IActionResult CompraDemoDisponible() => CompraSinPagoHabilitada ? Ok(new { Habilitada = true }) : NotFound();
+
+    [HttpPost("Ofertas/{ofertaId:guid}/Demo")]
+    public Task<IActionResult> ComprarSinPago(Guid ofertaId, SolicitudCompraDemo solicitud, CancellationToken ct) =>
+        CrearOrden(ofertaId, new SolicitudCompra(solicitud.Referencia, solicitud.Unidades, null), sinPago: true, ct);
+
+    private bool CompraSinPagoHabilitada => EsEntornoDemo &&
+        !string.IsNullOrWhiteSpace(configuration["Comercio:ClaveLiquidacionDemo"]);
+
+    private bool EsEntornoDemo => environment.IsDevelopment() || environment.IsEnvironment("Piloto");
+
+    private Task<IActionResult> CrearOrden(Guid ofertaId, SolicitudCompra solicitud, bool sinPago, CancellationToken ct) =>
         ConComprador(async comprador =>
         {
             if (solicitud.Referencia == Guid.Empty)
@@ -30,7 +45,7 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
             if (existente != null)
             {
                 if (existente.CompradorId != comprador.UsuarioId || existente.OfertaId != ofertaId ||
-                    existente.Unidades != solicitud.Unidades)
+                    existente.Unidades != solicitud.Unidades || (existente.PrecioUnitario == 0) != sinPago)
                     return Conflict("La referencia ya corresponde a otra compra.");
                 return Ok(await Ordenes(comprador.UsuarioId).SingleAsync(c => c.Id == existente.Id, ct));
             }
@@ -42,7 +57,7 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
                 return BadRequest("No puedes comprar unidades de tu propia oferta.");
 
             ConfiguracionPollar? pollar = null;
-            if (oferta.Id == CompraDemo.OfertaCasaPrado)
+            if (!sinPago && oferta.Id == CompraDemo.OfertaCasaPrado)
             {
                 if (solicitud.PagadorUsdc is null || !Regex.IsMatch(solicitud.PagadorUsdc, @"\AG[A-Z2-7]{55}\z"))
                     return BadRequest("Conecta una billetera Stellar Testnet con Pollar para pagar esta oferta.");
@@ -69,7 +84,7 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
             var compra = new CompraDemo
             {
                 Id = solicitud.Referencia, OfertaId = ofertaId, CompradorId = comprador.UsuarioId,
-                Unidades = solicitud.Unidades, PrecioUnitario = pollar?.PrecioUnitario ?? oferta.Precio,
+                Unidades = solicitud.Unidades, PrecioUnitario = sinPago ? 0 : pollar?.PrecioUnitario ?? oferta.Precio,
                 Moneda = pollar is null ? oferta.Moneda : "USD", CreadaEn = ahora, ReintentarEn = ahora,
                 Estado = pollar is null ? "PENDIENTE" : "ESPERANDO_PAGO",
                 PagadorUsdc = pollar is null ? null : solicitud.PagadorUsdc, DestinoUsdc = pollar?.Destino,
@@ -196,13 +211,14 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
                 .Select(c => new
                 {
                     c.Id, Inmueble = c.Oferta.Nombre, Codigo = c.Oferta.Codigo, c.Unidades,
-                    Total = c.PrecioUnitario * c.Unidades, c.Moneda, c.Estado, c.CreadaEn, c.Hash, c.HashPago
+                    Total = c.PrecioUnitario * c.Unidades, SinPago = c.PrecioUnitario == 0,
+                    c.Moneda, c.Estado, c.CreadaEn, c.Hash, c.HashPago
                 }).ToListAsync(ct);
             return Ok(new { Compras = compras.Take(tamano), HaySiguiente = compras.Count > tamano });
         }, ct, requiereRevisor: true);
 
     private Task<CompraDetalle?> OrdenActiva(Guid comprador, CancellationToken ct) =>
-        Ordenes(comprador).Where(c => c.OfertaId == CompraDemo.OfertaCasaPrado &&
+        Ordenes(comprador).Where(c => c.OfertaId == CompraDemo.OfertaCasaPrado && c.PagadorUsdc != null &&
             (c.Estado == "ESPERANDO_PAGO" || c.Estado == "PENDIENTE")).OrderByDescending(c => c.CreadaEn).FirstOrDefaultAsync(ct);
 
     private HttpRequestMessage PeticionPollar(HttpMethod metodo, Guid tenant, string ruta)
@@ -227,7 +243,8 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
         .Select(c => new CompraDetalle
         {
             Id = c.Id, OfertaId = c.OfertaId, Inmueble = c.Oferta.Nombre, Codigo = c.Oferta.Codigo, Unidades = c.Unidades,
-            Total = c.PrecioUnitario * c.Unidades, Moneda = c.Moneda, Estado = c.Estado, CreadaEn = c.CreadaEn,
+            Total = c.PrecioUnitario * c.Unidades, SinPago = c.PrecioUnitario == 0,
+            Moneda = c.Moneda, Estado = c.Estado, CreadaEn = c.CreadaEn,
             Hash = c.Hash, Billetera = c.Billetera, Ledger = c.Ledger,
             HashPago = c.HashPago, LedgerPago = c.LedgerPago, PagadorUsdc = c.PagadorUsdc, DestinoUsdc = c.DestinoUsdc,
             PagoIniciado = c.PagadorUsdc != null && c.TransferenciaIniciada,
@@ -240,7 +257,7 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
     private async Task<IActionResult> ConCuenta(Func<Titular, Task<IActionResult>> operacion, CancellationToken ct,
         bool requiereRevisor)
     {
-        if (!environment.IsDevelopment() && !environment.IsEnvironment("Piloto"))
+        if (!EsEntornoDemo)
             return NotFound();
         if (Request.Headers.Authorization.Count != 1)
             return Unauthorized();
@@ -274,6 +291,9 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
         [Range(typeof(long), "1", "922337203685", ParseLimitsInInvariantCulture = true)] long Unidades,
         [MaxLength(56)] string? PagadorUsdc);
 
+    public sealed record SolicitudCompraDemo(Guid Referencia,
+        [Range(typeof(long), "1", "922337203685", ParseLimitsInInvariantCulture = true)] long Unidades);
+
     public sealed record SolicitudPago([Required, StringLength(64, MinimumLength = 64)] string Hash);
     private sealed record ConfiguracionPollar(string ClavePublica, string Destino, string Emisor, decimal PrecioUnitario);
     private sealed record PagoVerificado(bool Pendiente, long? Ledger);
@@ -288,6 +308,7 @@ public sealed class ComprasController(CatalogoContext context, PrepararCatalogo 
         public required string Codigo { get; init; }
         public long Unidades { get; init; }
         public decimal Total { get; init; }
+        public bool SinPago { get; init; }
         public required string Moneda { get; init; }
         public required string Estado { get; init; }
         public DateTimeOffset CreadaEn { get; init; }

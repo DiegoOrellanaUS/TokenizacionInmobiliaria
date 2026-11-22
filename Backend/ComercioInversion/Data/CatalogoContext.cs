@@ -7,6 +7,8 @@ public sealed class CatalogoContext(DbContextOptions<CatalogoContext> options) :
 {
     public DbSet<OfertaPublicada> Ofertas => Set<OfertaPublicada>();
     public DbSet<CompraDemo> Compras => Set<CompraDemo>();
+    public DbSet<CierreRenta> CierresRenta => Set<CierreRenta>();
+    public DbSet<PagoRenta> PagosRenta => Set<PagoRenta>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +33,17 @@ public sealed class CatalogoContext(DbContextOptions<CatalogoContext> options) :
         compra.Property(c => c.Moneda).HasMaxLength(3);
         oferta.Property(o => o.Moneda).HasMaxLength(3);
         oferta.Property(o => o.Codigo).HasMaxLength(12);
+
+        var cierre = modelBuilder.Entity<CierreRenta>();
+        cierre.ToTable("cierre_renta", "catalogo");
+        cierre.HasIndex(c => new { c.OfertaId, c.Periodo }).IsUnique();
+        cierre.HasOne(c => c.Oferta).WithMany().HasForeignKey(c => c.OfertaId).OnDelete(DeleteBehavior.Restrict);
+        cierre.Property(c => c.Datos).HasColumnType("jsonb");
+        var pago = modelBuilder.Entity<PagoRenta>();
+        pago.ToTable("pago_renta", "catalogo");
+        pago.HasIndex(p => new { p.CierreId, p.CompradorId }).IsUnique();
+        pago.HasIndex(p => p.CompradorId);
+        pago.HasOne(p => p.Cierre).WithMany(c => c.Pagos).HasForeignKey(p => p.CierreId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

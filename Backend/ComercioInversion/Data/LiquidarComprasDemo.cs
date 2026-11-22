@@ -29,7 +29,9 @@ public sealed class LiquidarComprasDemo(IServiceScopeFactory scopes, IHttpClient
         await scope.ServiceProvider.GetRequiredService<PrepararCatalogo>().Ejecutar(context, ct);
         var ahora = DateTimeOffset.UtcNow;
         var candidatas = await context.Compras.AsNoTracking().Where(c => c.Estado == "PENDIENTE" && c.ReintentarEn <= ahora &&
-                (c.OfertaId != CompraDemo.OfertaCasaPrado || c.HashPago != null && c.LedgerPago != null))
+                (c.OfertaId != CompraDemo.OfertaCasaPrado ||
+                 c.PrecioUnitario == 0 && c.PagadorUsdc == null && c.DestinoUsdc == null && c.HashPago == null && c.LedgerPago == null ||
+                 c.HashPago != null && c.LedgerPago != null))
             .OrderBy(c => c.ReintentarEn).Take(10).Include(c => c.Oferta).ToListAsync(ct);
         foreach (var compra in candidatas)
         {
@@ -58,6 +60,8 @@ public sealed class LiquidarComprasDemo(IServiceScopeFactory scopes, IHttpClient
         request.Content = JsonContent.Create(new
         {
             compra.Oferta.InmuebleId, compra.CompradorId, compra.Unidades,
+            SinPago = compra.PrecioUnitario == 0 && compra.PagadorUsdc is null && compra.DestinoUsdc is null &&
+                compra.HashPago is null && compra.LedgerPago is null,
             Pago = compra.HashPago is null ? null : new CompraDemo.EvidenciaPago(compra.HashPago,
                 compra.PagadorUsdc!, compra.DestinoUsdc!, compra.PrecioUnitario * compra.Unidades, compra.CreadaEn),
         });

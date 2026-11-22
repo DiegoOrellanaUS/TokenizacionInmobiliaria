@@ -6,14 +6,13 @@ import { useAccion, useDatos } from '../hooks'
 import { useSesion } from '../session'
 import { Button, Campo, ErrorBox, Estado } from '../ui/atoms'
 import { ComprobantesCompra } from '../ui/ComprobantesCompra'
+import { esHashStellar } from '../ui/Stellar'
 
 type Configuracion = { clavePublica: string; emisor: string; precioUnitario: number }
 type Checkout = { configuracion: Configuracion | null; orden: Compra | null }
-const esHash = (hash: string) => /^[0-9a-f]{64}$/i.test(hash)
 
 export function CompraPollar({ oferta, actualizarOferta }: { oferta: Oferta; actualizarOferta: () => void }) {
   const { sesion } = useSesion()
-  if (sesion?.esRevisor) return null
 
   return <section className="panel flow-stack">
     <h2>Comprar con Pollar</h2>
@@ -40,6 +39,7 @@ function CheckoutPollar({ sesion, oferta, actualizarOferta }: {
   const [cliente, setCliente] = useState<PollarClient>()
   const [billetera, setBilletera] = useState('')
   const [mensajeWallet, setMensajeWallet] = useState('')
+  const [conectando, setConectando] = useState(false)
   const [aviso, setAviso] = useState('')
   const [confirmacion, setConfirmacion] = useState<PendingConfirmation>()
   const [confirmando, setConfirmando] = useState(false)
@@ -53,12 +53,17 @@ function CheckoutPollar({ sesion, oferta, actualizarOferta }: {
     let limpiar: (() => void) | undefined
     void import('@pollar/core').then(({ PollarClient }) => {
       if (!activo) return
-      const sdk = new PollarClient({ apiKey: clavePublica, stellarNetwork: 'testnet', confirmation: 'prompt' })
+      const sdk = new PollarClient({
+        apiKey: clavePublica, stellarNetwork: 'testnet', confirmation: 'prompt',
+        oauthRedirectUri: window.location.origin,
+      })
       function sincronizar() {
         const auth = sdk.getAuthState()
         const wallet = sdk.getWallet()
         const lista = auth.step === 'authenticated' && auth.verified && /^G[A-Z2-7]{55}$/.test(wallet?.address ?? '')
         setBilletera(lista ? wallet!.address : '')
+        setConectando(auth.step === 'creating_session' || auth.step === 'opening_oauth' ||
+          auth.step === 'authenticating' || auth.step === 'authenticating_wallet')
         setMensajeWallet(auth.step === 'error' ? auth.message :
           auth.step === 'wallet_not_installed' ? 'Instala Freighter y selecciona Testnet.' :
           auth.step === 'authenticated' && !lista ? 'Pollar está preparando tu billetera Stellar.' : '')
@@ -124,7 +129,7 @@ function CheckoutPollar({ sesion, oferta, actualizarOferta }: {
       })
       if (intento.error) throw intento.error
       const hash = 'hash' in pago ? pago.hash : undefined
-      if (!hash || !esHash(hash)) {
+      if (!hash || !esHashStellar(hash)) {
         if (!intento.iniciado) throw new Error('La billetera no completó la confirmación del pago.')
         throw new Error('Pollar todavía no devolvió un hash. Revisa el historial de tu billetera y verifica el pago con ese comprobante.')
       }
@@ -163,10 +168,14 @@ function CheckoutPollar({ sesion, oferta, actualizarOferta }: {
     <ErrorBox text={checkout.error || action.error || seguimiento.error || mensajeWallet}/>
     {checkout.loading && <p role="status">Consultando compra…</p>}
     {configuracion && necesitaWallet && (!resultado && oferta.disponibles <= 0 ? <p>La oferta se agotó.</p> :
-      !billetera ? <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={!cliente} onClick={() => cliente?.login({ provider: 'google' })}>Abrir billetera con Pollar</Button>
-        <Button type="button" variant="secondary" disabled={!cliente} onClick={() => cliente?.login({ provider: 'freighter' })}>Conectar Freighter</Button>
-      </div> : <>
+      !billetera ? <>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" disabled={!cliente || conectando} onClick={() => cliente?.login({ provider: 'google' })}>Abrir billetera con Pollar</Button>
+          <Button type="button" variant="secondary" disabled={!cliente || conectando} onClick={() => cliente?.login({ provider: 'freighter' })}>Conectar Freighter</Button>
+          {conectando && <Button type="button" variant="secondary" onClick={() => cliente?.cancelLogin()}>Cancelar conexión</Button>}
+        </div>
+        {conectando && <p role="status">Si Google muestra un error de URL de retorno, cierra esa ventana y cancela la conexión. Puedes volver a intentar con Freighter en Testnet.</p>}
+      </> : <>
         <p className="break-all">Billetera pagadora <code>{billetera}</code></p>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="secondary" disabled={action.busy} onClick={() => ejecutar(async () => {
@@ -226,7 +235,7 @@ function CheckoutPollar({ sesion, oferta, actualizarOferta }: {
         <p>Si Pollar ya envió el pago, verifica el mismo comprobante. Referencia en Stellar <code>{resultado.memoPago}</code>.</p>
         <Campo label="Hash de pago USDC"><input value={hash} onChange={evento => setHashManual(evento.target.value)}
           maxLength={64} required/></Campo>
-        <Button disabled={action.busy || !esHash(hash.trim())}>Verificar pago</Button>
+        <Button disabled={action.busy || !esHashStellar(hash.trim())}>Verificar pago</Button>
       </form> : esperandoPago && billetera === resultado.pagadorUsdc && configuracion &&
         <Button type="button" disabled={action.busy} onClick={() => ejecutar(() => pagar(resultado))}>Pagar con Pollar</Button>}
       {resultado.puedeCancelar && <Button type="button" variant="secondary" disabled={action.busy} onClick={() => ejecutar(async () => {

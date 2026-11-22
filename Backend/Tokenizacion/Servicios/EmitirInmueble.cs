@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Tokenizacion.Data;
 using Tokenizacion.Dominio;
@@ -26,37 +28,20 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
 
     public Task<ResultadoEmision> EjecutarAsync(Guid tenantId, Guid inmuebleId, Guid usuarioId, int cupo,
         TokenizarInmueble solicitud, CancellationToken ct) =>
-        ConBloqueoAsync(() => EmitirAsync(tenantId, inmuebleId, usuarioId, cupo, solicitud, ct), ct);
+        context.ConBloqueoStellarAsync(() => EmitirAsync(tenantId, inmuebleId, usuarioId, cupo, solicitud, ct), ct);
 
     public Task<ResultadoEmision?> ReconciliarAsync(Guid tenantId, Guid inmuebleId, CancellationToken ct) =>
-        ConBloqueoAsync<ResultadoEmision?>(async () =>
+        context.ConBloqueoStellarAsync<ResultadoEmision?>(async () =>
         {
             var existente = await Emisiones().SingleOrDefaultAsync(e => e.inmueble_ref == inmuebleId, ct);
             return existente is null ? null : await ContinuarAsync(tenantId, existente, ct);
         }, ct);
 
-    private async Task<T> ConBloqueoAsync<T>(Func<Task<T>> operacion, CancellationToken ct)
-    {
-        await context.Database.OpenConnectionAsync(ct);
-        try
-        {
-            // Mantiene el cupo y la emisión única aun cuando se ejecuten varias instancias.
-            await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_lock(67730290112711)", ct);
-            try
-            {
-                return await operacion();
-            }
-            finally
-            {
-                await context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock(67730290112711)", CancellationToken.None);
-            }
-        }
-        finally { await context.Database.CloseConnectionAsync(); }
-    }
-
     private async Task<ResultadoEmision> EmitirAsync(Guid tenantId, Guid inmuebleId, Guid usuarioId, int cupo,
         TokenizarInmueble solicitud, CancellationToken ct)
     {
+        // El formulario anterior enviaba INM001 por defecto.
+        var solicitado = solicitud.Codigo is null or "" or "INM001" ? null : solicitud.Codigo;
         var emision = await Emisiones().SingleOrDefaultAsync(e => e.inmueble_ref == inmuebleId, ct);
         if (emision is null)
         {
@@ -64,15 +49,48 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
             if (usados >= cupo)
                 throw new StellarRequisitoException("El tenant alcanzó el cupo de tokens propios de la suscripción.");
 
-            emision = await RegistrarAsync(tenantId, inmuebleId, usuarioId, solicitud, ct);
+            var codigo = await ElegirCodigoAsync(inmuebleId, solicitado, ct);
+            emision = await RegistrarAsync(tenantId, inmuebleId, usuarioId, codigo, solicitud.Unidades, ct);
         }
-        else if (emision.Instruccion.Activo.codigo != solicitud.Codigo ||
+        else if ((solicitado is not null && emision.Instruccion.Activo.codigo != solicitado) ||
                  emision.Instruccion.cantidad_base != solicitud.Unidades * Escala)
         {
             throw new StellarRequisitoException("El inmueble ya tiene una solicitud de emisión con otros datos.");
         }
 
         return await ContinuarAsync(tenantId, emision, ct);
+    }
+
+    private async Task<string> ElegirCodigoAsync(Guid inmuebleId, string? solicitado, CancellationToken ct)
+    {
+        var activos = context.ActivoCadena.Where(a => a.red == Red);
+        if (solicitado is not null)
+        {
+            if (await activos.AnyAsync(a => a.codigo == solicitado, ct))
+                throw new StellarRequisitoException("El código ya se usa en un activo de este espacio.");
+            return solicitado;
+        }
+
+        var valor = BinaryPrimitives.ReadUInt64BigEndian(SHA256.HashData(inmuebleId.ToByteArray()));
+        string codigo;
+        do
+        {
+            codigo = FormatearCodigo(valor++);
+        } while (await activos.AnyAsync(a => a.codigo == codigo, ct));
+        return codigo;
+    }
+
+    private static string FormatearCodigo(ulong valor)
+    {
+        const string alfabeto = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        Span<char> codigo = stackalloc char[12];
+        codigo[0] = 'I';
+        for (var i = codigo.Length - 1; i > 0; i--)
+        {
+            codigo[i] = alfabeto[(int)(valor % 36)];
+            valor /= 36;
+        }
+        return new string(codigo);
     }
 
     private async Task<ResultadoEmision> ContinuarAsync(Guid tenantId, EmisionInmueble emision, CancellationToken ct)
@@ -92,19 +110,7 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
             await context.SaveChangesAsync(ct);
         }
 
-        var hash = emision.hash!;
-        var resultado = await red.ConsultarAsync(hash, ct);
-        if (resultado.Estado == "NOT_FOUND")
-        {
-            try
-            {
-                resultado = await stellar.EnviarPagoInmueble(tenantId, emision.sobre_firmado!, hash, ct);
-            }
-            catch (Exception ex) when (ex is StellarCliException or TimeoutException)
-            {
-                resultado = await red.ConsultarAsync(hash, ct);
-            }
-        }
+        var resultado = await red.ConfirmarOEnviarAsync(tenantId, emision.hash!, emision.sobre_firmado!, ct);
 
         if (resultado.Ledger is > 0 && resultado.Estado is "SUCCESS" or "FAILED")
             await CerrarAsync(emision, resultado.Estado == "SUCCESS", resultado.Ledger.Value, ct);
@@ -113,13 +119,13 @@ public sealed class EmitirInmueble(TokenizacionContext context, StellarCli stell
     }
 
     private async Task<EmisionInmueble> RegistrarAsync(Guid tenantId, Guid inmuebleId, Guid usuarioId,
-        TokenizarInmueble solicitud, CancellationToken ct)
+        string codigo, long unidades, CancellationToken ct)
     {
         var (emisor, distribuidora) = await stellar.PrepararCuentasInmueble(tenantId, inmuebleId, ct);
         var activo = new ActivoCadena
         {
-            id = Guid.NewGuid(), red = Red, emisor = emisor, codigo = solicitud.Codigo,
-            oferta_maxima_base = solicitud.Unidades * Escala, estado = Pendiente
+            id = Guid.NewGuid(), red = Red, emisor = emisor, codigo = codigo,
+            oferta_maxima_base = unidades * Escala, estado = Pendiente
         };
         var emision = new EmisionInmueble
         {

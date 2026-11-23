@@ -79,13 +79,14 @@ static bool EsRutaPiloto(HttpRequest request)
          path == "/api/Auth/GitHub/Estado" ||
          path == "/api/Auth/GitHub/Iniciar" || path == "/api/Auth/GitHub/Callback" ||
          path == "/api/Auth/Facebook/Estado" || path == "/api/Auth/Facebook/Iniciar" ||
-         path == "/api/Auth/Facebook/Callback"))
+         path == "/api/Auth/Facebook/Callback" || path == "/api/Auth/Facebook/Vinculo"))
         return true;
 
     if (HttpMethods.IsPost(request.Method) &&
         (path == "/api/Auth/GitHub/Refrescar" || path == "/api/Auth/GitHub/Salir" ||
          path == "/api/Auth/Sesion/Refrescar" || path == "/api/Auth/Sesion/Salir" ||
-         path == "/api/Auth/GitHub/RegistrarRevisor" || path == "/api/Auth/Facebook/RegistrarRevisor"))
+         path == "/api/Auth/GitHub/RegistrarRevisor" || path == "/api/Auth/Facebook/RegistrarRevisor" ||
+         path == "/api/Auth/Facebook/Vincular" || path == "/api/Auth/Facebook/ConfirmarVinculo"))
         return true;
 
     if (path == "/api/Global/Catalogo" || path.StartsWithSegments("/api/Global/Activos") || path == "/api/Global/Panel" || path == "/api/Global/Panel/excel" ||

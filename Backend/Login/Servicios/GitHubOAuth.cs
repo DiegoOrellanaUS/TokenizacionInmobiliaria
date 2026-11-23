@@ -8,7 +8,7 @@ namespace Adminstracion.Servicios;
 public sealed class GitHubOAuth(IHttpClientFactory clients, IdentidadesOAuth identidades, IConfiguration config)
 {
     public const string Ruta = "/api/Auth/GitHub";
-    private const string Emisor = "https://github.com";
+    internal const string Emisor = "https://github.com";
 
     public static bool Habilitado(IConfiguration config) => config.GetValue<bool>("GitHubOAuth:Habilitado");
 

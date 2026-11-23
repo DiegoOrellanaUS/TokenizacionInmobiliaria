@@ -11,7 +11,7 @@ public sealed class FacebookOAuth(IHttpClientFactory clientes, IdentidadesOAuth 
 {
     public const string Ruta = "/api/Auth/Facebook";
     private const string Version = "v25.0";
-    private const string Emisor = "https://www.facebook.com";
+    internal const string Emisor = "https://www.facebook.com";
     private const string Graph = "https://graph.facebook.com/" + Version;
 
     public static bool Habilitado(IConfiguration config) => config.GetValue<bool>("FacebookOAuth:Habilitado");
@@ -40,6 +40,13 @@ public sealed class FacebookOAuth(IHttpClientFactory clientes, IdentidadesOAuth 
             });
 
     public async Task<Usuario?> AutorizarAsync(string codigo, CancellationToken ct, string? codigoRevisor = null)
+    {
+        var perfil = await LeerPerfilAsync(codigo, ct);
+        return perfil is null ? null : await identidades.ObtenerAsync("FacebookOAuth", Emisor, perfil.Id,
+            perfil.Email, perfil.Name, "Usuario de Facebook", ct, codigoRevisor);
+    }
+
+    internal async Task<IdentidadFacebook?> LeerPerfilAsync(string codigo, CancellationToken ct)
     {
         using var cliente = clientes.CreateClient("FacebookOAuth");
         var secreto = config["FacebookOAuth:AppSecret"]!;
@@ -72,10 +79,10 @@ public sealed class FacebookOAuth(IHttpClientFactory clientes, IdentidadesOAuth 
         if (usuario?.Id is not { Length: > 0 and <= 64 } sujeto || !sujeto.All(char.IsAsciiDigit))
             return null;
 
-        return await identidades.ObtenerAsync("FacebookOAuth", Emisor, sujeto, usuario.Email,
-            usuario.Name, "Usuario de Facebook", ct, codigoRevisor);
+        return new(sujeto, usuario.Name, usuario.Email);
     }
 
     private sealed record Autorizacion([property: JsonPropertyName("access_token")] string? AccessToken);
     private sealed record PerfilFacebook(string? Id, string? Name, string? Email);
+    internal sealed record IdentidadFacebook(string Id, string? Name, string? Email);
 }

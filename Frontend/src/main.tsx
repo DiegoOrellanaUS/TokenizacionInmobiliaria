@@ -4,6 +4,7 @@ import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocat
 import { ArrowUpRight, Blocks, ChartNoAxesCombined, ClipboardList, FolderSearch, LogOut, ShieldCheck } from 'lucide-react'
 import { SesionProvider, useSesion } from './session'
 import { Acceso } from './pages/Acceso'
+import { Conexiones, rutaConexiones } from './pages/Conexiones'
 import { Espacio, NuevoInmueble, Planes } from './pages/Espacio'
 import { Expediente } from './pages/Expediente'
 import { RevisionBandeja, RevisionDetalle, RevisionTransacciones } from './pages/Revision'
@@ -16,16 +17,17 @@ import { useDatos } from './hooks'
 import './style.css'
 
 function Shell() {
-  const { sesion, modo, salir } = useSesion()
+  const { sesion, modo, proveedores, salir } = useSesion()
+  const conexiones = sesion?.venceEn && proveedores.facebook && <NavLink to={rutaConexiones}>Conexiones</NavLink>
   const rentas = useDatos<{ habilitadas: boolean }>(sesion ? '/api/Compras/Rentas/Disponible' : null)
   const [errorSalida, setErrorSalida] = useState('')
   const navigate = useNavigate()
   const { pathname } = useLocation()
   useEffect(() => {
-    const name = pathname.startsWith('/administracion') ? 'Administración global' : pathname === '/' ? 'Inmuebles tokenizados' : pathname === '/espacio/reportes' ? 'Mis reportes' : pathname.startsWith('/espacio') ? 'Mi espacio' :
+    const name = pathname === rutaConexiones ? 'Conexiones de mi cuenta' : pathname.startsWith('/administracion') ? 'Administración global' : pathname === '/' ? 'Inmuebles tokenizados' : pathname === '/espacio/reportes' ? 'Mis reportes' : pathname.startsWith('/espacio') ? 'Mi espacio' :
       pathname.startsWith('/revision') ? 'Revisión de inmuebles' : pathname.startsWith('/ofertas') ? 'Oferta inmobiliaria' : pathname === '/portafolio' ? 'Portafolio' : pathname === '/planes' ? 'Planes' : 'Acceso'
     document.title = 'Umbral | ' + name
-    const privateRoute = pathname.startsWith('/administracion') || pathname.startsWith('/espacio') || pathname.startsWith('/revision') || pathname === '/acceso' || pathname === '/portafolio'
+    const privateRoute = pathname === rutaConexiones || pathname.startsWith('/administracion') || pathname.startsWith('/espacio') || pathname.startsWith('/revision') || pathname === '/acceso' || pathname === '/portafolio'
     let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
     if (!robots) { robots = document.createElement('meta'); robots.name = 'robots'; document.head.append(robots) }
     robots.content = privateRoute ? 'noindex, nofollow' : 'index, follow'
@@ -46,6 +48,7 @@ function Shell() {
         </Link>
         <nav aria-label="Navegación de administración global">
           <Link to="/">Mercado</Link>
+          {conexiones}
         </nav>
         <button type="button" className="review-account" onClick={cerrar}>
           Cerrar sesión <LogOut size={16} aria-hidden="true"/>
@@ -58,7 +61,7 @@ function Shell() {
     </div>
 
   if (sesion?.esRevisor) {
-    if (pathname !== '/revision' && !pathname.startsWith('/revision/')) return <Navigate to="/revision" replace/>
+    if (pathname !== rutaConexiones && pathname !== '/revision' && !pathname.startsWith('/revision/')) return <Navigate to="/revision" replace/>
     return <div className="review-site">
       <a href="#contenido" className="skip">Saltar al contenido</a>
       <header className="review-header">
@@ -76,6 +79,7 @@ function Shell() {
           <NavLink to="/revision/transacciones"><ClipboardList size={18} aria-hidden="true"/> Transacciones</NavLink>
           <NavLink to="/revision/reportes"><ChartNoAxesCombined size={18} aria-hidden="true"/> Reportes globales</NavLink>
           {rentas.data?.habilitadas && <NavLink to="/revision/rentas">Repartos de alquiler</NavLink>}
+          {conexiones}
         </nav>
         <main id="contenido">
           {errorSalida && <p className="alert" role="alert">{errorSalida}</p>}
@@ -95,6 +99,7 @@ function Shell() {
           <NavLink to="/espacio/reportes">Mis reportes</NavLink>
           {sesion.tenantId && rentas.data?.habilitadas && <NavLink to="/espacio/rentas">Cierres de alquiler</NavLink>}</>}
         {sesion?.esAdminGlobal && <NavLink to="/administracion/indicadores">Indicadores globales</NavLink>}
+        {conexiones}
       </nav>
       {sesion ? <button className="account" type="button" aria-label="Cerrar sesión" onClick={cerrar}>
         <span>{sesion.nombre.split(' ')[0]}</span> <LogOut size={17}/>
@@ -126,6 +131,7 @@ createRoot(document.getElementById('root')!).render(
       <Route index element={<Mercado/>}/>
       <Route path="acceso" element={<Acceso/>}/>
       <Route path="planes" element={<Planes/>}/>
+      <Route path={rutaConexiones} element={<Conexiones/>}/>
       <Route path="ofertas/:id" element={<DetalleOferta/>}/>
       <Route element={<Privado/>}>
         <Route path="espacio" element={<Espacio/>}/>

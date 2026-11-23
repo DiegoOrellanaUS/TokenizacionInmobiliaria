@@ -8,7 +8,7 @@
   },
   "headers": [
     {
-      "source": "/:ruta(acceso|espacio|revision|portafolio|administracion)/:resto*",
+      "source": "/:ruta(acceso|espacio|revision|portafolio|administracion|cuenta)/:resto*",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ],

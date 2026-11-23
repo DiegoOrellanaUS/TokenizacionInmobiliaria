@@ -43,6 +43,16 @@ namespace Adminstracion.Migrations
                     b.ToTable("invitacion_revision_canjeada", "admin");
                 });
 
+            modelBuilder.Entity("Adminstracion.Dominio.VinculoOAuth", b =>
+                {
+                    b.Property<string>("Emisor").HasColumnType("text");
+                    b.Property<string>("Sujeto").HasColumnType("text");
+                    b.Property<Guid>("UsuarioId").HasColumnType("uuid");
+                    b.HasKey("Emisor", "Sujeto");
+                    b.HasIndex("UsuarioId", "Emisor").IsUnique();
+                    b.ToTable("vinculo_oauth", "admin");
+                });
+
             modelBuilder.Entity("Adminstracion.Dominio.Plan", b =>
                 {
                     b.Property<Guid>("id")
@@ -413,6 +423,15 @@ namespace Adminstracion.Migrations
                 });
 
             modelBuilder.Entity("Adminstracion.Dominio.SesionOAuth", b =>
+                {
+                    b.HasOne("Adminstracion.Dominio.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Adminstracion.Dominio.VinculoOAuth", b =>
                 {
                     b.HasOne("Adminstracion.Dominio.Usuario", null)
                         .WithMany()

@@ -12,6 +12,7 @@ public class AdminContext(DbContextOptions<AdminContext> options) : DbContext(op
     public DbSet<Plan> Plan => Set<Plan>();
     public DbSet<Suscripcion> Suscripcion => Set<Suscripcion>();
     public DbSet<SesionOAuth> SesionesOAuth => Set<SesionOAuth>();
+    public DbSet<VinculoOAuth> VinculosOAuth => Set<VinculoOAuth>();
 
     public DbSet<InvitacionRevisionCanjeada> InvitacionesRevision => Set<InvitacionRevisionCanjeada>();
 
@@ -47,6 +48,14 @@ public class AdminContext(DbContextOptions<AdminContext> options) : DbContext(op
             e.HasIndex(s => s.AccessHash).IsUnique();
             e.HasIndex(s => s.FamiliaId);
             e.HasOne<Usuario>().WithMany().HasForeignKey(s => s.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<VinculoOAuth>(e =>
+        {
+            e.ToTable("vinculo_oauth");
+            e.HasKey(v => new { v.Emisor, v.Sujeto });
+            e.HasIndex(v => new { v.UsuarioId, v.Emisor }).IsUnique();
+            e.HasOne<Usuario>().WithMany().HasForeignKey(v => v.UsuarioId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Tenant>(e =>

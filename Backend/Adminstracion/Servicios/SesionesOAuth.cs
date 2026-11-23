@@ -28,6 +28,18 @@ public sealed class SesionesOAuth(AdminContext context)
                       select (Guid?)s.UsuarioId).SingleOrDefaultAsync(ct);
     }
 
+    public Task<SesionActiva?> ConsultarActivaAsync(string? refresh, CancellationToken ct)
+    {
+        if (refresh is not { Length: 43 }) return Task.FromResult<SesionActiva?>(null);
+        var hash = Hash(refresh);
+        var ahora = DateTimeOffset.UtcNow;
+        return (from s in context.SesionesOAuth.AsNoTracking()
+                join u in context.Usuario.AsNoTracking() on s.UsuarioId equals u.id
+                where s.TokenHash == hash && s.VenceEn > ahora && s.RevocadoEn == null &&
+                      s.UsadoEn == null && u.estado == "ACTIVO"
+                select new SesionActiva(u.id, s.FamiliaId, u.emisor_oidc)).SingleOrDefaultAsync(ct);
+    }
+
     public async Task<TokensOAuth> CrearAsync(Guid usuarioId, CancellationToken ct)
     {
         var tokens = Agregar(usuarioId, Guid.NewGuid(), DateTimeOffset.UtcNow.AddDays(7));
@@ -101,4 +113,6 @@ public sealed class SesionesOAuth(AdminContext context)
 
     public sealed record TokensOAuth(Guid UsuarioId, string Access, string Refresh,
         DateTimeOffset VenceRefresh, DateTimeOffset VenceAccess);
+
+    public sealed record SesionActiva(Guid UsuarioId, Guid FamiliaId, string? EmisorPrincipal);
 }

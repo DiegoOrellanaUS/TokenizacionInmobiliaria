@@ -71,7 +71,8 @@ export async function api<T>(path: string, options: {
     headers.set('Content-Type', 'application/json')
     body = JSON.stringify(options.body)
   }
-  const response = await fetch(base + path, { method: options.method ?? 'GET', headers, body, signal: options.signal })
+  const destino = path.startsWith('/api/Auth/') ? path : base + path
+  const response = await fetch(destino, { method: options.method ?? 'GET', headers, body, signal: options.signal })
   const raw = await response.text()
   let result: unknown = raw
   try { result = JSON.parse(raw) } catch { /* algunas API responden texto */ }

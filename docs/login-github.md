@@ -45,6 +45,12 @@ Para Facebook, registra `https://tokenizacion-inmobiliaria.vercel.app/api/Auth/F
 
 Un perfil previo se conserva cuando un administrador vincula explícitamente el **ID numérico de GitHub** al UUID de ese usuario en `GitHubOAuth__Vinculos__ID_NUMERICO`, en **Login**. El correo por sí solo no trata un perfil anterior como propio. Para conservar la revisión de inmuebles, vincula la cuenta GitHub del revisor y configura `Inmuebles__Revisores__0` con su UUID de Umbral en Login. Admin mantiene su lista de revisores para autorizar las operaciones.
 
+## Vincular Facebook a un perfil de GitHub
+
+Con tu sesión de GitHub abierta, entra a **Conexiones → Vincular Facebook**. Autoriza Facebook y confirma en Umbral la cuenta de Facebook mostrada. Después puedes usar cualquiera de los dos botones de acceso con el mismo perfil y portafolio. Si Facebook ya pertenece a otro perfil de Umbral, la vinculación se rechaza.
+
+Admin debe aplicar la migración `VinculosOAuth` antes de habilitar esta versión de Login. La migración agrega una tabla de vínculos junto a los perfiles existentes.
+
 ## Desarrollo local
 
 Login escucha en `http://localhost:7320` y el proxy de Vite reenvía las rutas de autenticación. Configura la cadena de conexión y las credenciales mediante secretos de .NET. Para completar la autorización en local, usa un origen de frontend HTTPS y registra exactamente su callback en GitHub.

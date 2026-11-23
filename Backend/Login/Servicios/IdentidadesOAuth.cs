@@ -24,8 +24,7 @@ public sealed class IdentidadesOAuth(AdminContext context, IConfiguration config
         await using var tx = await context.Database.BeginTransactionAsync(ct);
         await AprovisionarTenant.Bloquear(context, emisor + ":" + sujeto, ct);
 
-        var cuenta = await context.Usuario.SingleOrDefaultAsync(
-            u => u.emisor_oidc == emisor && u.sujeto_oidc == sujeto, ct);
+        var cuenta = await BuscarAsync(emisor, sujeto, ct);
         if (cuenta is not null && codigoRevisor is not null &&
             !await invitaciones.FueCanjeadaPorAsync(codigoRevisor, cuenta.id, ct))
             throw new InvitacionRevisionInvalidaException();
@@ -68,4 +67,33 @@ public sealed class IdentidadesOAuth(AdminContext context, IConfiguration config
         await tx.CommitAsync(ct);
         return cuenta;
     }
+
+    public Task<bool> TieneFacebookAsync(Guid usuarioId, CancellationToken ct) =>
+        context.VinculosOAuth.AnyAsync(v => v.UsuarioId == usuarioId && v.Emisor == FacebookOAuth.Emisor, ct);
+
+    public async Task<bool> VincularFacebookAsync(Guid usuarioId, string sujeto, CancellationToken ct)
+    {
+        var emisor = FacebookOAuth.Emisor;
+        await using var tx = await context.Database.BeginTransactionAsync(ct);
+        await AprovisionarTenant.Bloquear(context, emisor + ":" + sujeto, ct);
+        await AprovisionarTenant.Bloquear(context, "oauth-usuario:" + usuarioId.ToString("D"), ct);
+
+        if (!await context.Usuario.AnyAsync(u => u.id == usuarioId && u.emisor_oidc == GitHubOAuth.Emisor &&
+            u.estado == "ACTIVO", ct)) return false;
+        var asociada = await BuscarAsync(emisor, sujeto, ct);
+        if (asociada is not null) return asociada.id == usuarioId;
+        if (await TieneFacebookAsync(usuarioId, ct)) return false;
+
+        context.VinculosOAuth.Add(new VinculoOAuth { UsuarioId = usuarioId, Emisor = emisor, Sujeto = sujeto });
+        await context.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
+    private async Task<Usuario?> BuscarAsync(string emisor, string sujeto, CancellationToken ct) =>
+        await context.Usuario.SingleOrDefaultAsync(u => u.emisor_oidc == emisor && u.sujeto_oidc == sujeto, ct) ??
+        await (from v in context.VinculosOAuth
+               join u in context.Usuario on v.UsuarioId equals u.id
+               where v.Emisor == emisor && v.Sujeto == sujeto
+               select u).SingleOrDefaultAsync(ct);
 }
